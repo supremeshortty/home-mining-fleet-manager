@@ -20,6 +20,8 @@ from energy import (
     ENERGY_COMPANY_PRESETS
 )
 from thermal import ThermalManager
+from alerts import AlertManager
+from weather import WeatherManager
 
 # Setup logging
 logging.basicConfig(
@@ -54,6 +56,15 @@ class FleetManager:
 
         # Thermal management
         self.thermal_mgr = ThermalManager(self.db)
+
+        # Alert system
+        self.alert_mgr = AlertManager(self.db)
+
+        # Weather integration
+        self.weather_mgr = WeatherManager(self.db)
+
+        # Track miner states for alert deduplication
+        self.miner_alert_states = {}  # ip -> {'last_offline_alert': timestamp, 'last_temp_alert': timestamp}
 
         # Load miners from database
         self._load_miners_from_db()
@@ -133,7 +144,24 @@ class FleetManager:
             """Update single miner status"""
             try:
                 status = miner.update_status()
+
+                # Initialize alert state for this miner if needed
+                if miner.ip not in self.miner_alert_states:
+                    self.miner_alert_states[miner.ip] = {
+                        'was_online': False,
+                        'last_temp_alert': None
+                    }
+
                 if status.get('status') == 'online':
+                    # Miner came back online - send recovery alert if it was offline before
+                    if not self.miner_alert_states[miner.ip]['was_online']:
+                        self.alert_mgr.alert_miner_online(
+                            miner.ip,
+                            status.get('hashrate', 0),
+                            status.get('temperature')
+                        )
+                    self.miner_alert_states[miner.ip]['was_online'] = True
+
                     # Save stats to database
                     miner_data = self.db.get_miner_by_ip(miner.ip)
                     if miner_data:
@@ -151,6 +179,28 @@ class FleetManager:
                     hashrate = status.get('hashrate')
 
                     if temp is not None:
+                        # Check for high temperature warning
+                        thermal_state = self.thermal_mgr.get_thermal_status(miner.ip)
+                        if thermal_state:
+                            profile = self.thermal_mgr._get_profile(miner.type)
+
+                            # Alert on emergency shutdown
+                            if thermal_state.get('in_emergency_cooldown'):
+                                self.alert_mgr.alert_emergency_shutdown(
+                                    miner.ip, temp,
+                                    f"Critical temperature {temp:.1f}°C exceeded"
+                                )
+                            # Alert on high temperature (only once per cooldown period)
+                            elif temp >= profile.warning_temp:
+                                now = datetime.now()
+                                last_alert = self.miner_alert_states[miner.ip]['last_temp_alert']
+                                if last_alert is None or (now - last_alert).total_seconds() > 900:  # 15 min cooldown
+                                    self.alert_mgr.alert_high_temperature(
+                                        miner.ip, temp, profile.warning_temp,
+                                        hashrate, status.get('frequency', 0)
+                                    )
+                                    self.miner_alert_states[miner.ip]['last_temp_alert'] = now
+
                         # Update thermal manager with current stats
                         self.thermal_mgr.update_miner_stats(miner.ip, temp, hashrate)
 
@@ -160,6 +210,17 @@ class FleetManager:
                         # Apply frequency adjustment if needed
                         if target_freq != status.get('frequency', 0):
                             self._apply_frequency(miner, target_freq, reason)
+
+                            # Alert on frequency adjustment (if significant)
+                            if "emergency" in reason.lower() or "critical" in reason.lower():
+                                self.alert_mgr.alert_frequency_adjusted(
+                                    miner.ip, target_freq, reason, temp
+                                )
+                else:
+                    # Miner is offline - send alert if it just went offline
+                    if self.miner_alert_states[miner.ip]['was_online']:
+                        self.alert_mgr.alert_miner_offline(miner.ip, "No response from miner")
+                        self.miner_alert_states[miner.ip]['was_online'] = False
 
             except Exception as e:
                 logger.error(f"Error updating miner {miner.ip}: {e}")
@@ -304,6 +365,63 @@ class FleetManager:
         except Exception as e:
             logger.error(f"Error logging profitability: {e}")
 
+    def _check_weather_predictions(self):
+        """Check weather forecast and predict thermal issues"""
+        try:
+            # Get current ambient temperature
+            current_weather = self.weather_mgr.get_current_weather()
+            if not current_weather:
+                return  # Weather not configured or unavailable
+
+            current_ambient = current_weather['temp_f']
+
+            # Get fleet average temperature
+            stats = self.get_fleet_stats()
+            avg_miner_temp = stats.get('avg_temperature', 0)
+
+            if avg_miner_temp > 0:
+                # Calculate typical delta from ambient to miner temp
+                # Convert avg_miner_temp from C to F for comparison
+                avg_miner_temp_f = (avg_miner_temp * 9/5) + 32
+                miner_temp_delta = avg_miner_temp_f - current_ambient
+
+                # Predict thermal issues
+                prediction = self.weather_mgr.predict_thermal_issues(
+                    current_ambient=current_ambient,
+                    miner_temp_delta=miner_temp_delta
+                )
+
+                # Send alerts for critical predictions
+                if prediction.get('critical'):
+                    logger.warning(f"Weather prediction: {prediction['message']}")
+                    # Alert about upcoming heat wave
+                    self.alert_mgr.send_custom_alert(
+                        title="⚠️ CRITICAL: Heat Wave Predicted",
+                        message=prediction['message'],
+                        alert_type="weather_critical",
+                        level="critical",
+                        data={
+                            'forecast_max_f': prediction['forecast_max_f'],
+                            'forecast_max_time': prediction['forecast_max_time'],
+                            'estimated_miner_temp_c': prediction['estimated_miner_temp_c'],
+                            'recommendations': prediction['recommendations']
+                        }
+                    )
+                elif prediction.get('warning'):
+                    logger.info(f"Weather warning: {prediction['message']}")
+
+                # Check if miners should pre-cool
+                for miner in self.miners.values():
+                    if miner.last_status and miner.last_status.get('temperature'):
+                        temp_c = miner.last_status['temperature']
+                        if self.weather_mgr.should_precool(temp_c, lookahead_hours=6):
+                            logger.info(f"Pre-cooling recommended for {miner.ip}")
+                            # Optionally reduce frequency preemptively
+                            # This would be a configurable option
+
+        except Exception as e:
+            logger.error(f"Error checking weather predictions: {e}")
+
     def start_monitoring(self):
         """Start background monitoring thread"""
         if self.monitoring_active:
@@ -314,6 +432,8 @@ class FleetManager:
 
         def monitor_loop():
             logger.info("Monitoring thread started")
+            weather_check_counter = 0  # Check weather every 10 iterations (2.5 minutes if UPDATE_INTERVAL=15)
+
             while self.monitoring_active:
                 try:
                     # Check if mining schedule requires frequency changes
@@ -327,6 +447,12 @@ class FleetManager:
 
                     # Log profitability (every hour)
                     self._log_profitability()
+
+                    # Check weather predictions periodically
+                    weather_check_counter += 1
+                    if weather_check_counter >= 10:  # Check weather less frequently
+                        self._check_weather_predictions()
+                        weather_check_counter = 0
 
                 except Exception as e:
                     logger.error(f"Error in monitoring loop: {e}")
@@ -821,6 +947,422 @@ def reset_thermal(ip: str):
         return jsonify({
             'success': True,
             'message': f"Reset {ip} to default settings"
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# Historical Data Routes (for charts)
+
+@app.route('/api/history/temperature', methods=['GET'])
+def get_temperature_history():
+    """Get temperature history for charting"""
+    try:
+        hours = int(request.args.get('hours', 24))
+        miner_ip = request.args.get('miner_ip')  # Optional: specific miner
+
+        if miner_ip:
+            # Get history for specific miner
+            miner_data = fleet.db.get_miner_by_ip(miner_ip)
+            if not miner_data:
+                return jsonify({
+                    'success': False,
+                    'error': 'Miner not found'
+                }), 404
+
+            history = fleet.db.get_stats_history(miner_data['id'], hours)
+            data_points = [
+                {
+                    'timestamp': h['timestamp'],
+                    'temperature': h['temperature'],
+                    'miner_ip': miner_ip
+                }
+                for h in history if h.get('temperature')
+            ]
+        else:
+            # Get history for all miners
+            data_points = []
+            for miner in fleet.miners.values():
+                miner_data = fleet.db.get_miner_by_ip(miner.ip)
+                if miner_data:
+                    history = fleet.db.get_stats_history(miner_data['id'], hours)
+                    for h in history:
+                        if h.get('temperature'):
+                            data_points.append({
+                                'timestamp': h['timestamp'],
+                                'temperature': h['temperature'],
+                                'miner_ip': miner.ip
+                            })
+
+        return jsonify({
+            'success': True,
+            'data': data_points
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/history/hashrate', methods=['GET'])
+def get_hashrate_history():
+    """Get hashrate history for charting"""
+    try:
+        hours = int(request.args.get('hours', 24))
+        miner_ip = request.args.get('miner_ip')  # Optional: specific miner
+
+        if miner_ip:
+            # Get history for specific miner
+            miner_data = fleet.db.get_miner_by_ip(miner_ip)
+            if not miner_data:
+                return jsonify({
+                    'success': False,
+                    'error': 'Miner not found'
+                }), 404
+
+            history = fleet.db.get_stats_history(miner_data['id'], hours)
+            data_points = [
+                {
+                    'timestamp': h['timestamp'],
+                    'hashrate': h['hashrate'],
+                    'hashrate_ths': h['hashrate'] / 1e12 if h['hashrate'] else 0,
+                    'miner_ip': miner_ip
+                }
+                for h in history if h.get('hashrate')
+            ]
+        else:
+            # Get history for all miners (aggregated)
+            # Group by timestamp and sum hashrates
+            from collections import defaultdict
+            aggregated = defaultdict(float)
+
+            for miner in fleet.miners.values():
+                miner_data = fleet.db.get_miner_by_ip(miner.ip)
+                if miner_data:
+                    history = fleet.db.get_stats_history(miner_data['id'], hours)
+                    for h in history:
+                        if h.get('hashrate'):
+                            aggregated[h['timestamp']] += h['hashrate']
+
+            data_points = [
+                {
+                    'timestamp': timestamp,
+                    'hashrate': hashrate,
+                    'hashrate_ths': hashrate / 1e12
+                }
+                for timestamp, hashrate in sorted(aggregated.items())
+            ]
+
+        return jsonify({
+            'success': True,
+            'data': data_points
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/history/power', methods=['GET'])
+def get_power_history():
+    """Get power consumption history for charting"""
+    try:
+        hours = int(request.args.get('hours', 24))
+        miner_ip = request.args.get('miner_ip')  # Optional: specific miner
+
+        if miner_ip:
+            # Get history for specific miner
+            miner_data = fleet.db.get_miner_by_ip(miner_ip)
+            if not miner_data:
+                return jsonify({
+                    'success': False,
+                    'error': 'Miner not found'
+                }), 404
+
+            history = fleet.db.get_stats_history(miner_data['id'], hours)
+            data_points = [
+                {
+                    'timestamp': h['timestamp'],
+                    'power': h['power'],
+                    'miner_ip': miner_ip
+                }
+                for h in history if h.get('power')
+            ]
+        else:
+            # Get history for all miners (aggregated)
+            from collections import defaultdict
+            aggregated = defaultdict(float)
+
+            for miner in fleet.miners.values():
+                miner_data = fleet.db.get_miner_by_ip(miner.ip)
+                if miner_data:
+                    history = fleet.db.get_stats_history(miner_data['id'], hours)
+                    for h in history:
+                        if h.get('power'):
+                            aggregated[h['timestamp']] += h['power']
+
+            data_points = [
+                {
+                    'timestamp': timestamp,
+                    'power': power
+                }
+                for timestamp, power in sorted(aggregated.items())
+            ]
+
+        return jsonify({
+            'success': True,
+            'data': data_points
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/history/frequency', methods=['GET'])
+def get_frequency_history():
+    """Get frequency adjustment history for charting"""
+    try:
+        hours = int(request.args.get('hours', 24))
+        miner_ip = request.args.get('miner_ip')
+
+        if not miner_ip:
+            return jsonify({
+                'success': False,
+                'error': 'miner_ip parameter required'
+            }), 400
+
+        # Get thermal history for this miner
+        history = fleet.thermal_mgr.get_frequency_history(miner_ip, hours)
+
+        return jsonify({
+            'success': True,
+            'data': history
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# Alert System Routes
+
+@app.route('/api/alerts/config', methods=['GET', 'POST'])
+def alert_config():
+    """Get or set alert configuration"""
+    if request.method == 'GET':
+        config_data = fleet.alert_mgr.get_config()
+        return jsonify({
+            'success': True,
+            'config': config_data
+        })
+    else:
+        data = request.get_json()
+        try:
+            fleet.alert_mgr.configure(
+                email_config=data.get('email'),
+                sms_config=data.get('sms'),
+                webhook_config=data.get('webhook'),
+                discord_config=data.get('discord'),
+                slack_config=data.get('slack')
+            )
+            return jsonify({
+                'success': True,
+                'message': 'Alert configuration updated'
+            })
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
+
+
+@app.route('/api/alerts/history', methods=['GET'])
+def alert_history():
+    """Get alert history"""
+    try:
+        hours = int(request.args.get('hours', 24))
+        history = fleet.alert_mgr.get_alert_history(hours)
+        return jsonify({
+            'success': True,
+            'alerts': history
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/alerts/test', methods=['POST'])
+def test_alert():
+    """Send a test alert"""
+    try:
+        data = request.get_json() or {}
+        channel = data.get('channel', 'all')  # email, sms, webhook, discord, slack, all
+
+        fleet.alert_mgr.send_custom_alert(
+            title="Test Alert",
+            message="This is a test alert from Home Mining Fleet Manager",
+            alert_type="test",
+            level="info",
+            data={'timestamp': datetime.now().isoformat()}
+        )
+
+        return jsonify({
+            'success': True,
+            'message': f'Test alert sent via {channel}'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# Weather Integration Routes
+
+@app.route('/api/weather/config', methods=['GET', 'POST'])
+def weather_config():
+    """Get or set weather configuration"""
+    if request.method == 'GET':
+        return jsonify({
+            'success': True,
+            'configured': fleet.weather_mgr.api_key is not None,
+            'location': fleet.weather_mgr.location,
+            'latitude': fleet.weather_mgr.latitude,
+            'longitude': fleet.weather_mgr.longitude
+        })
+    else:
+        data = request.get_json()
+        try:
+            fleet.weather_mgr.configure(
+                api_key=data.get('api_key'),
+                location=data.get('location'),
+                latitude=data.get('latitude'),
+                longitude=data.get('longitude')
+            )
+            return jsonify({
+                'success': True,
+                'message': 'Weather configuration updated'
+            })
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
+
+
+@app.route('/api/weather/current', methods=['GET'])
+def get_current_weather():
+    """Get current weather conditions"""
+    try:
+        weather = fleet.weather_mgr.get_current_weather()
+        if weather:
+            return jsonify({
+                'success': True,
+                'weather': weather
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Weather not configured or unavailable'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/weather/forecast', methods=['GET'])
+def get_weather_forecast():
+    """Get weather forecast"""
+    try:
+        hours = int(request.args.get('hours', 24))
+        forecast = fleet.weather_mgr.get_forecast(hours=hours)
+
+        if forecast:
+            return jsonify({
+                'success': True,
+                'forecast': [f.to_dict() for f in forecast]
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Weather not configured or unavailable'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/weather/prediction', methods=['GET'])
+def get_thermal_prediction():
+    """Get thermal issue prediction based on weather"""
+    try:
+        # Get current weather and fleet stats
+        current_weather = fleet.weather_mgr.get_current_weather()
+        if not current_weather:
+            return jsonify({
+                'success': False,
+                'error': 'Weather not configured'
+            }), 404
+
+        stats = fleet.get_fleet_stats()
+        avg_miner_temp = stats.get('avg_temperature', 0)
+
+        if avg_miner_temp > 0:
+            current_ambient = current_weather['temp_f']
+            avg_miner_temp_f = (avg_miner_temp * 9/5) + 32
+            miner_temp_delta = avg_miner_temp_f - current_ambient
+
+            prediction = fleet.weather_mgr.predict_thermal_issues(
+                current_ambient=current_ambient,
+                miner_temp_delta=miner_temp_delta
+            )
+
+            return jsonify({
+                'success': True,
+                'prediction': prediction
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'No miner temperature data available'
+            }), 404
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/weather/optimal-hours', methods=['GET'])
+def get_optimal_mining_hours():
+    """Get optimal mining hours based on temperature forecast"""
+    try:
+        hours = int(request.args.get('hours', 24))
+        max_temp = float(request.args.get('max_temp_f', 80.0))
+
+        optimal = fleet.weather_mgr.get_optimal_mining_hours(
+            hours=hours,
+            max_ambient_f=max_temp
+        )
+
+        return jsonify({
+            'success': True,
+            'optimal_periods': optimal
         })
     except Exception as e:
         return jsonify({

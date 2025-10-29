@@ -226,6 +226,19 @@ class Database:
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 
+    def get_stats_history(self, miner_id: int, hours: int = 24) -> List[Dict]:
+        """Get stats history for a miner within time window"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM stats
+                WHERE miner_id = ?
+                AND timestamp > datetime('now', ? || ' hours')
+                ORDER BY timestamp ASC
+            """, (miner_id, f'-{hours}'))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
     def delete_miner(self, ip: str):
         """Delete a miner and its stats"""
         with self._get_connection() as conn:

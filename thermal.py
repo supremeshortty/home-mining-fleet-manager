@@ -388,3 +388,25 @@ class ThermalManager:
         state.in_emergency_cooldown = False
         state.cooldown_started = None
         logger.info(f"Reset {miner_ip} to default settings")
+
+    def get_frequency_history(self, miner_ip: str, hours: int = 24) -> List[Dict]:
+        """
+        Get frequency adjustment history for a miner
+
+        Note: Currently returns current state only.
+        TODO: Add frequency column to stats table to track historical frequency changes
+        """
+        if miner_ip not in self.thermal_states:
+            return []
+
+        state = self.thermal_states[miner_ip]
+
+        # Return current state as a single data point
+        # In production, this would query historical frequency data from database
+        return [{
+            'timestamp': datetime.now().isoformat(),
+            'frequency': state.current_freq,
+            'temperature': state.current_temp,
+            'auto_tune_enabled': state.auto_tune_enabled,
+            'in_emergency_cooldown': state.in_emergency_cooldown
+        }]
