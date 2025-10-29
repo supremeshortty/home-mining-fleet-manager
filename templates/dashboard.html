@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mining Fleet Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⛏️ Home Mining Fleet Manager</h1>
+            <div class="header-actions">
+                <button id="discover-btn" class="btn btn-primary">Discover Miners</button>
+                <span id="last-update" class="status-text">Last update: Never</span>
+            </div>
+        </header>
+
+        <!-- Fleet Statistics -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Miners</div>
+                <div class="stat-value" id="total-miners">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Online</div>
+                <div class="stat-value online" id="online-miners">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Offline</div>
+                <div class="stat-value offline" id="offline-miners">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Hashrate</div>
+                <div class="stat-value" id="total-hashrate">0 GH/s</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Power</div>
+                <div class="stat-value" id="total-power">0 W</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Avg Temperature</div>
+                <div class="stat-value" id="avg-temp">0°C</div>
+            </div>
+        </section>
+
+        <!-- Miners List -->
+        <section class="miners-section">
+            <h2>Miners</h2>
+            <div id="miners-container">
+                <p class="loading">Loading miners...</p>
+            </div>
+        </section>
+
+        <!-- Discovery Status -->
+        <div id="discovery-status" class="alert" style="display: none;"></div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
