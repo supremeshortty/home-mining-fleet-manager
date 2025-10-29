@@ -19,6 +19,7 @@ from energy import (
     MiningScheduler,
     ENERGY_COMPANY_PRESETS
 )
+from thermal import ThermalManager
 
 # Setup logging
 logging.basicConfig(
@@ -50,6 +51,9 @@ class FleetManager:
 
         self.last_energy_log_time = None
         self.last_profitability_log_time = None
+
+        # Thermal management
+        self.thermal_mgr = ThermalManager(self.db)
 
         # Load miners from database
         self._load_miners_from_db()
@@ -111,6 +115,8 @@ class FleetManager:
                                 miner.type,
                                 miner.model
                             )
+                            # Register with thermal manager
+                            self.thermal_mgr.register_miner(miner.ip, miner.type)
                         discovered.append(miner)
                 except Exception as e:
                     logger.error(f"Error checking IP: {e}")
@@ -139,6 +145,22 @@ class FleetManager:
                             fan_speed=status.get('fan_speed'),
                             status='online'
                         )
+
+                    # Update thermal stats and apply auto-tuning
+                    temp = status.get('temperature')
+                    hashrate = status.get('hashrate')
+
+                    if temp is not None:
+                        # Update thermal manager with current stats
+                        self.thermal_mgr.update_miner_stats(miner.ip, temp, hashrate)
+
+                        # Calculate optimal frequency
+                        target_freq, reason = self.thermal_mgr.calculate_optimal_frequency(miner.ip)
+
+                        # Apply frequency adjustment if needed
+                        if target_freq != status.get('frequency', 0):
+                            self._apply_frequency(miner, target_freq, reason)
+
             except Exception as e:
                 logger.error(f"Error updating miner {miner.ip}: {e}")
 
@@ -154,6 +176,26 @@ class FleetManager:
                     future.result()
                 except Exception as e:
                     logger.error(f"Error in update: {e}")
+
+    def _apply_frequency(self, miner: Miner, target_freq: int, reason: str):
+        """Apply frequency adjustment to a miner"""
+        try:
+            # Only Bitaxe supports frequency control via API currently
+            if miner.type == 'Bitaxe':
+                if target_freq == 0:
+                    # Emergency shutdown - set to minimum safe frequency
+                    logger.warning(f"Emergency shutdown for {miner.ip}: {reason}")
+                    miner.apply_settings({'frequency': 400})  # Minimum safe freq
+                else:
+                    logger.info(f"Adjusting {miner.ip} frequency to {target_freq}MHz: {reason}")
+                    miner.apply_settings({'frequency': target_freq})
+            else:
+                # CGMiner-based miners don't support live frequency changes via API
+                # Would need firmware-level changes (future enhancement)
+                logger.debug(f"Frequency control not supported for {miner.type} ({miner.ip})")
+
+        except Exception as e:
+            logger.error(f"Failed to apply frequency to {miner.ip}: {e}")
 
     def _apply_mining_schedule(self):
         """Apply mining schedule (frequency control based on time/rates)"""
@@ -667,6 +709,124 @@ def mining_schedule():
                 'success': False,
                 'error': 'Missing schedule id'
             }), 400
+
+
+# Thermal Management Routes
+
+@app.route('/api/thermal/status', methods=['GET'])
+def get_thermal_status():
+    """Get thermal status for all miners"""
+    try:
+        status = fleet.thermal_mgr.get_all_thermal_status()
+        return jsonify({
+            'success': True,
+            'thermal_status': status
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/thermal/miner/<ip>', methods=['GET'])
+def get_miner_thermal(ip: str):
+    """Get thermal status for specific miner"""
+    try:
+        status = fleet.thermal_mgr.get_thermal_status(ip)
+        if status:
+            return jsonify({
+                'success': True,
+                'thermal_status': status
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Miner not found'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/thermal/auto-tune', methods=['POST'])
+def set_auto_tune():
+    """Enable/disable auto-tune globally or for specific miner"""
+    try:
+        data = request.get_json() or {}
+        enabled = data.get('enabled', True)
+        miner_ip = data.get('miner_ip')
+
+        if miner_ip:
+            # Set for specific miner
+            fleet.thermal_mgr.set_auto_tune(miner_ip, enabled)
+            return jsonify({
+                'success': True,
+                'message': f"Auto-tune {'enabled' if enabled else 'disabled'} for {miner_ip}"
+            })
+        else:
+            # Set globally
+            fleet.thermal_mgr.set_global_auto_tune(enabled)
+            return jsonify({
+                'success': True,
+                'message': f"Global auto-tune {'enabled' if enabled else 'disabled'}"
+            })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/thermal/force-frequency', methods=['POST'])
+def force_frequency():
+    """Force specific frequency for a miner (disables auto-tune)"""
+    try:
+        data = request.get_json() or {}
+        miner_ip = data.get('miner_ip')
+        frequency = data.get('frequency')
+
+        if not miner_ip or frequency is None:
+            return jsonify({
+                'success': False,
+                'error': 'Missing miner_ip or frequency'
+            }), 400
+
+        success = fleet.thermal_mgr.force_frequency(miner_ip, int(frequency))
+
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f"Forced {miner_ip} to {frequency}MHz"
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Miner not found'
+            }), 404
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/thermal/reset/<ip>', methods=['POST'])
+def reset_thermal(ip: str):
+    """Reset miner to default thermal settings"""
+    try:
+        fleet.thermal_mgr.reset_miner(ip)
+        return jsonify({
+            'success': True,
+            'message': f"Reset {ip} to default settings"
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 
 if __name__ == '__main__':
