@@ -1,17 +1,10 @@
 """
 Alert System Module
 
-Multi-channel alerting for critical mining events:
-- Email notifications
-- SMS via Twilio
-- Webhook/Discord/Slack integration
-- Configurable alert rules
+Telegram bot alerting for critical mining events.
 """
 import logging
-import smtplib
 import requests
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from enum import Enum
@@ -42,35 +35,7 @@ class AlertType(Enum):
 class AlertConfig:
     """Alert configuration"""
     def __init__(self):
-        # Email settings
-        self.email_enabled = False
-        self.smtp_server = ""
-        self.smtp_port = 587
-        self.smtp_username = ""
-        self.smtp_password = ""
-        self.email_from = ""
-        self.email_to = []
-
-        # SMS settings (Twilio)
-        self.sms_enabled = False
-        self.twilio_account_sid = ""
-        self.twilio_auth_token = ""
-        self.twilio_from_number = ""
-        self.sms_to_numbers = []
-
-        # Webhook settings
-        self.webhook_enabled = False
-        self.webhook_urls = []
-
-        # Discord webhook
-        self.discord_enabled = False
-        self.discord_webhook_url = ""
-
-        # Slack webhook
-        self.slack_enabled = False
-        self.slack_webhook_url = ""
-
-        # Telegram
+        # Telegram settings
         self.telegram_enabled = False
         self.telegram_bot_token = ""
         self.telegram_chat_id = ""
@@ -117,7 +82,7 @@ class Alert:
 
 
 class AlertManager:
-    """Manage and dispatch alerts across multiple channels"""
+    """Manage and dispatch Telegram alerts"""
 
     def __init__(self, db):
         self.db = db
@@ -125,54 +90,47 @@ class AlertManager:
         self.alert_history = []
         self.last_alerts = {}  # Track last alert time per type/miner
 
-    def configure(self, config_dict: Dict):
-        """Configure alert settings from dictionary"""
-        # Email
-        if 'email' in config_dict:
-            email = config_dict['email']
-            self.config.email_enabled = email.get('enabled', False)
-            self.config.smtp_server = email.get('smtp_server', '')
-            self.config.smtp_port = email.get('smtp_port', 587)
-            self.config.smtp_username = email.get('username', '')
-            self.config.smtp_password = email.get('password', '')
-            self.config.email_from = email.get('from', '')
-            self.config.email_to = email.get('to', [])
+    def configure(self, telegram_bot_token: str = None, telegram_chat_id: str = None,
+                  telegram_enabled: bool = None):
+        """
+        Configure Telegram bot settings
 
-        # SMS
-        if 'sms' in config_dict:
-            sms = config_dict['sms']
-            self.config.sms_enabled = sms.get('enabled', False)
-            self.config.twilio_account_sid = sms.get('account_sid', '')
-            self.config.twilio_auth_token = sms.get('auth_token', '')
-            self.config.twilio_from_number = sms.get('from_number', '')
-            self.config.sms_to_numbers = sms.get('to_numbers', [])
+        Args:
+            telegram_bot_token: Bot token from @BotFather
+            telegram_chat_id: Chat ID (positive for personal, negative for groups)
+            telegram_enabled: Enable/disable Telegram alerts
+        """
+        if telegram_bot_token is not None:
+            self.config.telegram_bot_token = telegram_bot_token
+        if telegram_chat_id is not None:
+            self.config.telegram_chat_id = telegram_chat_id
+        if telegram_enabled is not None:
+            self.config.telegram_enabled = telegram_enabled
 
-        # Webhooks
-        if 'webhook' in config_dict:
-            webhook = config_dict['webhook']
-            self.config.webhook_enabled = webhook.get('enabled', False)
-            self.config.webhook_urls = webhook.get('urls', [])
+        logger.info("Telegram alert configuration updated")
 
-        # Discord
-        if 'discord' in config_dict:
-            discord = config_dict['discord']
-            self.config.discord_enabled = discord.get('enabled', False)
-            self.config.discord_webhook_url = discord.get('webhook_url', '')
-
-        # Slack
-        if 'slack' in config_dict:
-            slack = config_dict['slack']
-            self.config.slack_enabled = slack.get('enabled', False)
-            self.config.slack_webhook_url = slack.get('webhook_url', '')
-
-        # Telegram
-        if 'telegram' in config_dict:
-            telegram = config_dict['telegram']
-            self.config.telegram_enabled = telegram.get('enabled', False)
-            self.config.telegram_bot_token = telegram.get('bot_token', '')
-            self.config.telegram_chat_id = telegram.get('chat_id', '')
-
-        logger.info("Alert configuration updated")
+    def get_config(self) -> Dict:
+        """Get current configuration"""
+        return {
+            'telegram': {
+                'enabled': self.config.telegram_enabled,
+                'bot_token': self.config.telegram_bot_token[:20] + '...' if self.config.telegram_bot_token else '',
+                'chat_id': self.config.telegram_chat_id
+            },
+            'rules': {
+                'alert_on_offline': self.config.alert_on_offline,
+                'alert_on_high_temp': self.config.alert_on_high_temp,
+                'alert_on_critical_temp': self.config.alert_on_critical_temp,
+                'alert_on_low_hashrate': self.config.alert_on_low_hashrate,
+                'alert_on_unprofitable': self.config.alert_on_unprofitable,
+                'alert_on_emergency_shutdown': self.config.alert_on_emergency_shutdown,
+                'alert_on_miner_online': self.config.alert_on_miner_online
+            },
+            'thresholds': {
+                'high_temp': self.config.high_temp_threshold,
+                'low_hashrate_pct': self.config.low_hashrate_threshold_pct
+            }
+        }
 
     def should_send_alert(self, alert: Alert) -> bool:
         """Check if alert should be sent (cooldown check)"""
@@ -189,7 +147,7 @@ class AlertManager:
         return True
 
     def send_alert(self, alert: Alert):
-        """Send alert through all configured channels"""
+        """Send alert through Telegram"""
         # Check cooldown
         if not self.should_send_alert(alert):
             return
@@ -209,219 +167,14 @@ class AlertManager:
         key = f"{alert.alert_type.value}:{alert.miner_ip or 'global'}"
         self.last_alerts[key] = datetime.now()
 
-        # Send through each enabled channel
-        success_count = 0
-
-        if self.config.email_enabled:
-            if self._send_email(alert):
-                success_count += 1
-
-        if self.config.sms_enabled:
-            if self._send_sms(alert):
-                success_count += 1
-
-        if self.config.webhook_enabled:
-            if self._send_webhook(alert):
-                success_count += 1
-
-        if self.config.discord_enabled:
-            if self._send_discord(alert):
-                success_count += 1
-
-        if self.config.slack_enabled:
-            if self._send_slack(alert):
-                success_count += 1
-
+        # Send through Telegram
         if self.config.telegram_enabled:
             if self._send_telegram(alert):
-                success_count += 1
-
-        logger.info(f"Alert sent via {success_count} channel(s): {alert.title}")
-
-    def _send_email(self, alert: Alert) -> bool:
-        """Send email alert"""
-        try:
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = f"[{alert.level.value.upper()}] {alert.title}"
-            msg['From'] = self.config.email_from
-            msg['To'] = ', '.join(self.config.email_to)
-
-            # Create email body
-            text = f"{alert.message}\n\n"
-            text += f"Time: {alert.timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n"
-            if alert.miner_ip:
-                text += f"Miner: {alert.miner_ip}\n"
-            if alert.data:
-                text += f"\nDetails:\n"
-                for key, value in alert.data.items():
-                    text += f"  {key}: {value}\n"
-
-            msg.attach(MIMEText(text, 'plain'))
-
-            # Send email
-            with smtplib.SMTP(self.config.smtp_server, self.config.smtp_port) as server:
-                server.starttls()
-                server.login(self.config.smtp_username, self.config.smtp_password)
-                server.send_message(msg)
-
-            logger.info(f"Email alert sent: {alert.title}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to send email alert: {e}")
-            return False
-
-    def _send_sms(self, alert: Alert) -> bool:
-        """Send SMS alert via Twilio"""
-        try:
-            from twilio.rest import Client
-
-            client = Client(
-                self.config.twilio_account_sid,
-                self.config.twilio_auth_token
-            )
-
-            # Create SMS message
-            message_text = f"[{alert.level.value.upper()}] {alert.title}\n{alert.message}"
-            if alert.miner_ip:
-                message_text += f"\nMiner: {alert.miner_ip}"
-
-            # Send to all configured numbers
-            for to_number in self.config.sms_to_numbers:
-                client.messages.create(
-                    body=message_text,
-                    from_=self.config.twilio_from_number,
-                    to=to_number
-                )
-
-            logger.info(f"SMS alert sent: {alert.title}")
-            return True
-
-        except ImportError:
-            logger.error("Twilio library not installed. Run: pip install twilio")
-            return False
-        except Exception as e:
-            logger.error(f"Failed to send SMS alert: {e}")
-            return False
-
-    def _send_webhook(self, alert: Alert) -> bool:
-        """Send webhook alert"""
-        try:
-            payload = alert.to_dict()
-
-            for url in self.config.webhook_urls:
-                response = requests.post(
-                    url,
-                    json=payload,
-                    timeout=10
-                )
-                response.raise_for_status()
-
-            logger.info(f"Webhook alert sent: {alert.title}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to send webhook alert: {e}")
-            return False
-
-    def _send_discord(self, alert: Alert) -> bool:
-        """Send Discord webhook alert"""
-        try:
-            # Discord webhook format
-            color_map = {
-                AlertLevel.INFO: 3447003,      # Blue
-                AlertLevel.WARNING: 16776960,  # Yellow
-                AlertLevel.CRITICAL: 16711680, # Red
-                AlertLevel.EMERGENCY: 10038562 # Dark red
-            }
-
-            embed = {
-                "title": alert.title,
-                "description": alert.message,
-                "color": color_map.get(alert.level, 3447003),
-                "timestamp": alert.timestamp.isoformat(),
-                "fields": []
-            }
-
-            if alert.miner_ip:
-                embed["fields"].append({
-                    "name": "Miner",
-                    "value": alert.miner_ip,
-                    "inline": True
-                })
-
-            for key, value in alert.data.items():
-                embed["fields"].append({
-                    "name": key,
-                    "value": str(value),
-                    "inline": True
-                })
-
-            payload = {"embeds": [embed]}
-
-            response = requests.post(
-                self.config.discord_webhook_url,
-                json=payload,
-                timeout=10
-            )
-            response.raise_for_status()
-
-            logger.info(f"Discord alert sent: {alert.title}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to send Discord alert: {e}")
-            return False
-
-    def _send_slack(self, alert: Alert) -> bool:
-        """Send Slack webhook alert"""
-        try:
-            # Slack webhook format
-            color_map = {
-                AlertLevel.INFO: "good",
-                AlertLevel.WARNING: "warning",
-                AlertLevel.CRITICAL: "danger",
-                AlertLevel.EMERGENCY: "danger"
-            }
-
-            fields = []
-            if alert.miner_ip:
-                fields.append({
-                    "title": "Miner",
-                    "value": alert.miner_ip,
-                    "short": True
-                })
-
-            for key, value in alert.data.items():
-                fields.append({
-                    "title": key,
-                    "value": str(value),
-                    "short": True
-                })
-
-            payload = {
-                "attachments": [{
-                    "color": color_map.get(alert.level, "good"),
-                    "title": alert.title,
-                    "text": alert.message,
-                    "fields": fields,
-                    "ts": int(alert.timestamp.timestamp())
-                }]
-            }
-
-            response = requests.post(
-                self.config.slack_webhook_url,
-                json=payload,
-                timeout=10
-            )
-            response.raise_for_status()
-
-            logger.info(f"Slack alert sent: {alert.title}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to send Slack alert: {e}")
-            return False
+                logger.info(f"Alert sent via Telegram: {alert.title}")
+            else:
+                logger.warning(f"Failed to send alert via Telegram: {alert.title}")
+        else:
+            logger.debug(f"Telegram not enabled, alert not sent: {alert.title}")
 
     def _send_telegram(self, alert: Alert) -> bool:
         """Send Telegram bot alert"""
@@ -479,8 +232,8 @@ class AlertManager:
 
     # Convenience methods for creating common alerts
 
-    def alert_miner_offline(self, miner_ip: str, miner_type: str):
-        """Alert when miner goes offline"""
+    def alert_miner_offline(self, miner_ip: str, reason: str):
+        """Send miner offline alert"""
         if not self.config.alert_on_offline:
             return
 
@@ -488,14 +241,34 @@ class AlertManager:
             alert_type=AlertType.MINER_OFFLINE,
             level=AlertLevel.WARNING,
             title=f"Miner Offline: {miner_ip}",
-            message=f"{miner_type} miner at {miner_ip} has gone offline",
+            message=f"Miner {miner_ip} is no longer responding.",
             miner_ip=miner_ip,
-            data={'miner_type': miner_type}
+            data={'reason': reason}
         )
         self.send_alert(alert)
 
-    def alert_high_temperature(self, miner_ip: str, temp: float, threshold: float):
-        """Alert when temperature is high but not critical"""
+    def alert_miner_online(self, miner_ip: str, hashrate: float, temperature: float = None):
+        """Send miner back online alert"""
+        if not self.config.alert_on_miner_online:
+            return
+
+        data = {'hashrate': f"{hashrate:.2f} GH/s"}
+        if temperature:
+            data['temperature'] = f"{temperature:.1f}°C"
+
+        alert = Alert(
+            alert_type=AlertType.MINER_ONLINE,
+            level=AlertLevel.INFO,
+            title=f"Miner Back Online: {miner_ip}",
+            message=f"Miner {miner_ip} has reconnected and is mining.",
+            miner_ip=miner_ip,
+            data=data
+        )
+        self.send_alert(alert)
+
+    def alert_high_temperature(self, miner_ip: str, temperature: float,
+                              threshold: float, hashrate: float, frequency: int):
+        """Send high temperature warning"""
         if not self.config.alert_on_high_temp:
             return
 
@@ -503,77 +276,116 @@ class AlertManager:
             alert_type=AlertType.HIGH_TEMPERATURE,
             level=AlertLevel.WARNING,
             title=f"High Temperature: {miner_ip}",
-            message=f"Miner temperature {temp:.1f}°C exceeds threshold {threshold:.1f}°C",
+            message=f"Miner {miner_ip} reached {temperature:.1f}°C (threshold: {threshold:.1f}°C)",
             miner_ip=miner_ip,
             data={
-                'temperature': f"{temp:.1f}°C",
-                'threshold': f"{threshold:.1f}°C"
+                'temperature': f"{temperature:.1f}°C",
+                'threshold': f"{threshold:.1f}°C",
+                'hashrate': f"{hashrate:.2f} GH/s",
+                'frequency': f"{frequency} MHz"
             }
         )
         self.send_alert(alert)
 
-    def alert_critical_temperature(self, miner_ip: str, temp: float, critical: float):
-        """Alert when temperature reaches critical level"""
-        if not self.config.alert_on_critical_temp:
-            return
-
-        alert = Alert(
-            alert_type=AlertType.CRITICAL_TEMPERATURE,
-            level=AlertLevel.CRITICAL,
-            title=f"CRITICAL Temperature: {miner_ip}",
-            message=f"Miner temperature {temp:.1f}°C has reached critical level {critical:.1f}°C",
-            miner_ip=miner_ip,
-            data={
-                'temperature': f"{temp:.1f}°C",
-                'critical_threshold': f"{critical:.1f}°C"
-            }
-        )
-        self.send_alert(alert)
-
-    def alert_emergency_shutdown(self, miner_ip: str, temp: float, reason: str):
-        """Alert when emergency shutdown triggered"""
+    def alert_emergency_shutdown(self, miner_ip: str, temperature: float, reason: str):
+        """Send emergency shutdown alert"""
         if not self.config.alert_on_emergency_shutdown:
             return
 
         alert = Alert(
             alert_type=AlertType.EMERGENCY_SHUTDOWN,
             level=AlertLevel.EMERGENCY,
-            title=f"EMERGENCY SHUTDOWN: {miner_ip}",
-            message=f"Miner has been shut down: {reason}",
+            title=f"🚨 EMERGENCY SHUTDOWN: {miner_ip}",
+            message=f"Miner {miner_ip} has been shut down due to critical temperature!",
             miner_ip=miner_ip,
             data={
-                'temperature': f"{temp:.1f}°C",
+                'temperature': f"{temperature:.1f}°C",
+                'reason': reason,
+                'action': 'Frequency set to minimum, 10-minute cooldown'
+            }
+        )
+        self.send_alert(alert)
+
+    def alert_frequency_adjusted(self, miner_ip: str, new_frequency: int,
+                                 reason: str, temperature: float):
+        """Send frequency adjustment alert (only for critical adjustments)"""
+        alert = Alert(
+            alert_type=AlertType.CRITICAL_TEMPERATURE,
+            level=AlertLevel.CRITICAL,
+            title=f"Frequency Adjusted: {miner_ip}",
+            message=f"Miner frequency changed to {new_frequency} MHz due to thermal management.",
+            miner_ip=miner_ip,
+            data={
+                'new_frequency': f"{new_frequency} MHz",
+                'temperature': f"{temperature:.1f}°C",
                 'reason': reason
             }
         )
         self.send_alert(alert)
 
-    def alert_weather_warning(self, location: str, forecast_high: float, message: str):
-        """Alert about upcoming hot weather"""
+    def alert_low_hashrate(self, miner_ip: str, current_hashrate: float,
+                          expected_hashrate: float, percent_drop: float):
+        """Send low hashrate alert"""
+        if not self.config.alert_on_low_hashrate:
+            return
+
         alert = Alert(
-            alert_type=AlertType.WEATHER_WARNING,
-            level=AlertLevel.INFO,
-            title=f"Weather Alert: {location}",
-            message=message,
+            alert_type=AlertType.LOW_HASHRATE,
+            level=AlertLevel.WARNING,
+            title=f"Low Hashrate: {miner_ip}",
+            message=f"Miner {miner_ip} hashrate dropped by {percent_drop:.1f}%",
+            miner_ip=miner_ip,
             data={
-                'location': location,
-                'forecast_high': f"{forecast_high:.1f}°F"
+                'current_hashrate': f"{current_hashrate:.2f} GH/s",
+                'expected_hashrate': f"{expected_hashrate:.2f} GH/s",
+                'drop_percent': f"{percent_drop:.1f}%"
             }
         )
         self.send_alert(alert)
 
-    def alert_unprofitable(self, profit_per_day: float):
-        """Alert when mining becomes unprofitable"""
+    def alert_unprofitable(self, profit_per_day: float, energy_cost: float,
+                          revenue: float, btc_price: float):
+        """Send unprofitable mining alert"""
         if not self.config.alert_on_unprofitable:
             return
 
         alert = Alert(
             alert_type=AlertType.UNPROFITABLE,
             level=AlertLevel.WARNING,
-            title="Mining Unprofitable",
-            message=f"Current profitability is negative: ${profit_per_day:.2f}/day",
+            title="⚠️ Mining Unprofitable",
+            message=f"Current mining operation is unprofitable: ${profit_per_day:.2f}/day",
             data={
-                'profit_per_day': f"${profit_per_day:.2f}"
+                'daily_profit': f"${profit_per_day:.2f}",
+                'energy_cost': f"${energy_cost:.2f}/day",
+                'revenue': f"${revenue:.2f}/day",
+                'btc_price': f"${btc_price:.2f}"
             }
+        )
+        self.send_alert(alert)
+
+    def send_custom_alert(self, title: str, message: str, alert_type: str = "custom",
+                         level: str = "info", data: Dict = None):
+        """Send a custom alert"""
+        # Convert string level to enum
+        level_map = {
+            'info': AlertLevel.INFO,
+            'warning': AlertLevel.WARNING,
+            'critical': AlertLevel.CRITICAL,
+            'emergency': AlertLevel.EMERGENCY
+        }
+        alert_level = level_map.get(level.lower(), AlertLevel.INFO)
+
+        # Use a generic alert type for custom alerts
+        try:
+            alert_type_enum = AlertType(alert_type)
+        except ValueError:
+            alert_type_enum = AlertType.WEATHER_WARNING  # Default fallback
+
+        alert = Alert(
+            alert_type=alert_type_enum,
+            level=alert_level,
+            title=title,
+            message=message,
+            data=data
         )
         self.send_alert(alert)

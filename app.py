@@ -1156,7 +1156,7 @@ def get_frequency_history():
 
 @app.route('/api/alerts/config', methods=['GET', 'POST'])
 def alert_config():
-    """Get or set alert configuration"""
+    """Get or set Telegram alert configuration"""
     if request.method == 'GET':
         config_data = fleet.alert_mgr.get_config()
         return jsonify({
@@ -1167,15 +1167,13 @@ def alert_config():
         data = request.get_json()
         try:
             fleet.alert_mgr.configure(
-                email_config=data.get('email'),
-                sms_config=data.get('sms'),
-                webhook_config=data.get('webhook'),
-                discord_config=data.get('discord'),
-                slack_config=data.get('slack')
+                telegram_bot_token=data.get('telegram_bot_token'),
+                telegram_chat_id=data.get('telegram_chat_id'),
+                telegram_enabled=data.get('telegram_enabled', True)
             )
             return jsonify({
                 'success': True,
-                'message': 'Alert configuration updated'
+                'message': 'Telegram alert configuration updated'
             })
         except Exception as e:
             return jsonify({

@@ -1084,9 +1084,6 @@ async function loadOptimalHours() {
 // Event Listeners for Phase 4 features
 document.getElementById('refresh-charts-btn')?.addEventListener('click', loadChartsTab);
 document.getElementById('chart-time-range')?.addEventListener('change', loadChartsTab);
-document.getElementById('test-email-btn')?.addEventListener('click', testAlert);
-document.getElementById('test-discord-btn')?.addEventListener('click', testAlert);
-document.getElementById('test-slack-btn')?.addEventListener('click', testAlert);
 document.getElementById('test-telegram-btn')?.addEventListener('click', testAlert);
 
 // Telegram configuration form
@@ -1101,22 +1098,20 @@ document.getElementById('telegram-alert-form')?.addEventListener('submit', async
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                telegram: {
-                    enabled: true,
-                    bot_token: botToken,
-                    chat_id: chatId
-                }
+                telegram_bot_token: botToken,
+                telegram_chat_id: chatId,
+                telegram_enabled: true
             })
         });
 
         const result = await response.json();
         if (result.success) {
-            showAlert('Telegram configuration saved!', 'success');
+            showAlert('✅ Telegram configuration saved successfully!', 'success');
         } else {
-            showAlert(`Error: ${result.error}`, 'error');
+            showAlert(`❌ Error: ${result.error}`, 'error');
         }
     } catch (error) {
-        showAlert(`Error saving Telegram config: ${error.message}`, 'error');
+        showAlert(`❌ Error saving Telegram config: ${error.message}`, 'error');
     }
 });
 

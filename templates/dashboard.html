@@ -204,81 +204,26 @@
         <div id="alerts-tab" class="tab-content">
             <!-- Alert Configuration -->
             <section class="alert-config-section">
-                <h2>Alert Configuration</h2>
+                <h2>Telegram Alert Configuration</h2>
                 <div class="config-card">
-                    <h3>Email Alerts (SMTP)</h3>
-                    <form id="email-alert-form">
-                        <div class="form-group">
-                            <label for="smtp-server">SMTP Server:</label>
-                            <input type="text" id="smtp-server" placeholder="smtp.gmail.com">
-                        </div>
-                        <div class="form-group">
-                            <label for="smtp-port">SMTP Port:</label>
-                            <input type="number" id="smtp-port" placeholder="587" value="587">
-                        </div>
-                        <div class="form-group">
-                            <label for="smtp-username">Username:</label>
-                            <input type="text" id="smtp-username" placeholder="your-email@gmail.com">
-                        </div>
-                        <div class="form-group">
-                            <label for="smtp-password">Password:</label>
-                            <input type="password" id="smtp-password" placeholder="app-specific password">
-                        </div>
-                        <div class="form-group">
-                            <label for="smtp-from">From Address:</label>
-                            <input type="email" id="smtp-from" placeholder="alerts@mining.local">
-                        </div>
-                        <div class="form-group">
-                            <label for="smtp-to">To Address:</label>
-                            <input type="email" id="smtp-to" placeholder="your-email@gmail.com">
-                        </div>
-                        <button type="submit" class="btn btn-primary">Save Email Config</button>
-                        <button type="button" id="test-email-btn" class="btn btn-secondary">Test Email</button>
-                    </form>
-                </div>
-
-                <div class="config-card">
-                    <h3>Discord Webhook</h3>
-                    <form id="discord-alert-form">
-                        <div class="form-group">
-                            <label for="discord-webhook">Webhook URL:</label>
-                            <input type="url" id="discord-webhook" placeholder="https://discord.com/api/webhooks/...">
-                        </div>
-                        <button type="submit" class="btn btn-primary">Save Discord Config</button>
-                        <button type="button" id="test-discord-btn" class="btn btn-secondary">Test Discord</button>
-                    </form>
-                </div>
-
-                <div class="config-card">
-                    <h3>Slack Webhook</h3>
-                    <form id="slack-alert-form">
-                        <div class="form-group">
-                            <label for="slack-webhook">Webhook URL:</label>
-                            <input type="url" id="slack-webhook" placeholder="https://hooks.slack.com/services/...">
-                        </div>
-                        <button type="submit" class="btn btn-primary">Save Slack Config</button>
-                        <button type="button" id="test-slack-btn" class="btn btn-secondary">Test Slack</button>
-                    </form>
-                </div>
-
-                <div class="config-card">
-                    <h3>Telegram Bot</h3>
+                    <h3>📱 Telegram Bot Setup</h3>
                     <p class="help-text">
-                        Get bot token from <a href="https://t.me/BotFather" target="_blank">@BotFather</a>.
-                        Get chat ID: send a message to your bot, then visit
-                        <code>https://api.telegram.org/bot&lt;YOUR_BOT_TOKEN&gt;/getUpdates</code>
+                        <strong>Step 1:</strong> Create bot with <a href="https://t.me/BotFather" target="_blank">@BotFather</a> - send <code>/newbot</code><br>
+                        <strong>Step 2:</strong> Get Chat ID - send a message to your bot, then visit:<br>
+                        <code>https://api.telegram.org/bot&lt;YOUR_BOT_TOKEN&gt;/getUpdates</code><br>
+                        <strong>Step 3:</strong> Enter your details below and click Save
                     </p>
                     <form id="telegram-alert-form">
                         <div class="form-group">
                             <label for="telegram-bot-token">Bot Token:</label>
-                            <input type="text" id="telegram-bot-token" placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz">
+                            <input type="text" id="telegram-bot-token" placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz" required>
                         </div>
                         <div class="form-group">
                             <label for="telegram-chat-id">Chat ID:</label>
-                            <input type="text" id="telegram-chat-id" placeholder="123456789 or -123456789 for groups">
+                            <input type="text" id="telegram-chat-id" placeholder="123456789 or -123456789 for groups" required>
                         </div>
-                        <button type="submit" class="btn btn-primary">Save Telegram Config</button>
-                        <button type="button" id="test-telegram-btn" class="btn btn-secondary">Test Telegram</button>
+                        <button type="submit" class="btn btn-primary">💾 Save Configuration</button>
+                        <button type="button" id="test-telegram-btn" class="btn btn-secondary">📨 Send Test Alert</button>
                     </form>
                 </div>
             </section>
