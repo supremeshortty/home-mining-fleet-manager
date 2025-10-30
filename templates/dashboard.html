@@ -20,6 +20,9 @@
         <div class="tabs">
             <button class="tab-btn active" data-tab="fleet">Fleet</button>
             <button class="tab-btn" data-tab="energy">Energy</button>
+            <button class="tab-btn" data-tab="charts">Charts</button>
+            <button class="tab-btn" data-tab="alerts">Alerts</button>
+            <button class="tab-btn" data-tab="weather">Weather</button>
         </div>
 
         <!-- Fleet Tab -->
@@ -147,10 +150,187 @@
             </section>
         </div>
 
+        <!-- Charts Tab -->
+        <div id="charts-tab" class="tab-content">
+            <!-- Time Range Selector -->
+            <section class="chart-controls-section">
+                <h2>Historical Data</h2>
+                <div class="form-group-inline">
+                    <label for="chart-time-range">Time Range:</label>
+                    <select id="chart-time-range">
+                        <option value="6">Last 6 hours</option>
+                        <option value="24" selected>Last 24 hours</option>
+                        <option value="72">Last 3 days</option>
+                        <option value="168">Last 7 days</option>
+                    </select>
+                    <button id="refresh-charts-btn" class="btn btn-secondary">Refresh</button>
+                </div>
+            </section>
+
+            <!-- Temperature Chart -->
+            <section class="chart-section">
+                <h3>Temperature History</h3>
+                <div class="chart-container">
+                    <canvas id="temperature-chart"></canvas>
+                </div>
+            </section>
+
+            <!-- Hashrate Chart -->
+            <section class="chart-section">
+                <h3>Hashrate History</h3>
+                <div class="chart-container">
+                    <canvas id="hashrate-chart"></canvas>
+                </div>
+            </section>
+
+            <!-- Power Chart -->
+            <section class="chart-section">
+                <h3>Power Consumption History</h3>
+                <div class="chart-container">
+                    <canvas id="power-chart"></canvas>
+                </div>
+            </section>
+
+            <!-- Profitability Chart -->
+            <section class="chart-section">
+                <h3>Profitability Trend</h3>
+                <div class="chart-container">
+                    <canvas id="profitability-chart"></canvas>
+                </div>
+            </section>
+        </div>
+
+        <!-- Alerts Tab -->
+        <div id="alerts-tab" class="tab-content">
+            <!-- Alert Configuration -->
+            <section class="alert-config-section">
+                <h2>Alert Configuration</h2>
+                <div class="config-card">
+                    <h3>Email Alerts (SMTP)</h3>
+                    <form id="email-alert-form">
+                        <div class="form-group">
+                            <label for="smtp-server">SMTP Server:</label>
+                            <input type="text" id="smtp-server" placeholder="smtp.gmail.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="smtp-port">SMTP Port:</label>
+                            <input type="number" id="smtp-port" placeholder="587" value="587">
+                        </div>
+                        <div class="form-group">
+                            <label for="smtp-username">Username:</label>
+                            <input type="text" id="smtp-username" placeholder="your-email@gmail.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="smtp-password">Password:</label>
+                            <input type="password" id="smtp-password" placeholder="app-specific password">
+                        </div>
+                        <div class="form-group">
+                            <label for="smtp-from">From Address:</label>
+                            <input type="email" id="smtp-from" placeholder="alerts@mining.local">
+                        </div>
+                        <div class="form-group">
+                            <label for="smtp-to">To Address:</label>
+                            <input type="email" id="smtp-to" placeholder="your-email@gmail.com">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save Email Config</button>
+                        <button type="button" id="test-email-btn" class="btn btn-secondary">Test Email</button>
+                    </form>
+                </div>
+
+                <div class="config-card">
+                    <h3>Discord Webhook</h3>
+                    <form id="discord-alert-form">
+                        <div class="form-group">
+                            <label for="discord-webhook">Webhook URL:</label>
+                            <input type="url" id="discord-webhook" placeholder="https://discord.com/api/webhooks/...">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save Discord Config</button>
+                        <button type="button" id="test-discord-btn" class="btn btn-secondary">Test Discord</button>
+                    </form>
+                </div>
+
+                <div class="config-card">
+                    <h3>Slack Webhook</h3>
+                    <form id="slack-alert-form">
+                        <div class="form-group">
+                            <label for="slack-webhook">Webhook URL:</label>
+                            <input type="url" id="slack-webhook" placeholder="https://hooks.slack.com/services/...">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save Slack Config</button>
+                        <button type="button" id="test-slack-btn" class="btn btn-secondary">Test Slack</button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Alert History -->
+            <section class="alert-history-section">
+                <h2>Recent Alerts</h2>
+                <div id="alert-history-container">
+                    <p class="loading">Loading alert history...</p>
+                </div>
+            </section>
+        </div>
+
+        <!-- Weather Tab -->
+        <div id="weather-tab" class="tab-content">
+            <!-- Weather Configuration -->
+            <section class="weather-config-section">
+                <h2>Weather Configuration</h2>
+                <div class="config-card">
+                    <p>Get a free API key from <a href="https://openweathermap.org/api" target="_blank">OpenWeatherMap</a></p>
+                    <form id="weather-config-form">
+                        <div class="form-group">
+                            <label for="weather-api-key">API Key:</label>
+                            <input type="text" id="weather-api-key" placeholder="Your OpenWeatherMap API key">
+                        </div>
+                        <div class="form-group">
+                            <label for="weather-location">Location:</label>
+                            <input type="text" id="weather-location" placeholder="San Francisco,US">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save Configuration</button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Current Weather -->
+            <section class="current-weather-section">
+                <h2>Current Conditions</h2>
+                <div id="current-weather-container">
+                    <p class="loading">Weather not configured or unavailable</p>
+                </div>
+            </section>
+
+            <!-- Weather Forecast -->
+            <section class="weather-forecast-section">
+                <h2>24-Hour Forecast</h2>
+                <div id="weather-forecast-container">
+                    <p class="loading">No forecast available</p>
+                </div>
+            </section>
+
+            <!-- Thermal Prediction -->
+            <section class="thermal-prediction-section">
+                <h2>Thermal Impact Prediction</h2>
+                <div id="thermal-prediction-container">
+                    <p class="loading">No prediction available</p>
+                </div>
+            </section>
+
+            <!-- Optimal Mining Hours -->
+            <section class="optimal-hours-section">
+                <h2>Optimal Mining Hours</h2>
+                <div id="optimal-hours-container">
+                    <p class="loading">No data available</p>
+                </div>
+            </section>
+        </div>
+
         <!-- Alert Box -->
         <div id="alert-box" class="alert" style="display: none;"></div>
     </div>
 
+    <!-- Chart.js Library -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="/static/script.js"></script>
 </body>
 </html>

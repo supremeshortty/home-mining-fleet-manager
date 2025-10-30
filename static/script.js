@@ -517,3 +517,583 @@ function updateLastUpdateTime() {
     const now = new Date().toLocaleTimeString();
     document.getElementById('last-update').textContent = `Last update: ${now}`;
 }
+
+// ============================================================================
+// PHASE 4: CHARTS, ALERTS, AND WEATHER
+// ============================================================================
+
+// Chart instances
+let temperatureChart = null;
+let hashrateChart = null;
+let powerChart = null;
+let profitabilityChart = null;
+
+// Load Charts Tab
+async function loadChartsTab() {
+    const hours = parseInt(document.getElementById('chart-time-range').value);
+    await loadTemperatureChart(hours);
+    await loadHashrateChart(hours);
+    await loadPowerChart(hours);
+    await loadProfitabilityChart();
+}
+
+// Load Temperature Chart
+async function loadTemperatureChart(hours = 24) {
+    try {
+        const response = await fetch(`${API_BASE}/api/history/temperature?hours=${hours}`);
+        const result = await response.json();
+
+        if (!result.success) {
+            console.error('Error loading temperature history:', result.error);
+            return;
+        }
+
+        const ctx = document.getElementById('temperature-chart').getContext('2d');
+
+        // Group data by miner IP
+        const minerData = {};
+        result.data.forEach(point => {
+            if (!minerData[point.miner_ip]) {
+                minerData[point.miner_ip] = {
+                    labels: [],
+                    data: []
+                };
+            }
+            minerData[point.miner_ip].labels.push(new Date(point.timestamp));
+            minerData[point.miner_ip].data.push(point.temperature);
+        });
+
+        // Create datasets
+        const datasets = Object.keys(minerData).map((ip, index) => {
+            const colors = ['#4CAF50', '#2196F3', '#ff9800', '#f44336', '#9c27b0'];
+            return {
+                label: ip,
+                data: minerData[ip].labels.map((time, i) => ({
+                    x: time,
+                    y: minerData[ip].data[i]
+                })),
+                borderColor: colors[index % colors.length],
+                backgroundColor: colors[index % colors.length] + '20',
+                tension: 0.4
+            };
+        });
+
+        // Destroy existing chart
+        if (temperatureChart) {
+            temperatureChart.destroy();
+        }
+
+        // Create new chart
+        temperatureChart = new Chart(ctx, {
+            type: 'line',
+            data: { datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#fff' }
+                    },
+                    title: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: hours <= 24 ? 'hour' : 'day'
+                        },
+                        ticks: { color: '#888' },
+                        grid: { color: '#333' }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Temperature (°C)',
+                            color: '#888'
+                        },
+                        ticks: { color: '#888' },
+                        grid: { color: '#333' }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading temperature chart:', error);
+    }
+}
+
+// Load Hashrate Chart
+async function loadHashrateChart(hours = 24) {
+    try {
+        const response = await fetch(`${API_BASE}/api/history/hashrate?hours=${hours}`);
+        const result = await response.json();
+
+        if (!result.success) {
+            console.error('Error loading hashrate history:', result.error);
+            return;
+        }
+
+        const ctx = document.getElementById('hashrate-chart').getContext('2d');
+
+        // Prepare data
+        const labels = result.data.map(point => new Date(point.timestamp));
+        const data = result.data.map(point => point.hashrate_ths);
+
+        // Destroy existing chart
+        if (hashrateChart) {
+            hashrateChart.destroy();
+        }
+
+        // Create new chart
+        hashrateChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Total Hashrate (TH/s)',
+                    data,
+                    borderColor: '#4CAF50',
+                    backgroundColor: '#4CAF5020',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#fff' }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: hours <= 24 ? 'hour' : 'day'
+                        },
+                        ticks: { color: '#888' },
+                        grid: { color: '#333' }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Hashrate (TH/s)',
+                            color: '#888'
+                        },
+                        ticks: { color: '#888' },
+                        grid: { color: '#333' }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading hashrate chart:', error);
+    }
+}
+
+// Load Power Chart
+async function loadPowerChart(hours = 24) {
+    try {
+        const response = await fetch(`${API_BASE}/api/history/power?hours=${hours}`);
+        const result = await response.json();
+
+        if (!result.success) {
+            console.error('Error loading power history:', result.error);
+            return;
+        }
+
+        const ctx = document.getElementById('power-chart').getContext('2d');
+
+        // Prepare data
+        const labels = result.data.map(point => new Date(point.timestamp));
+        const data = result.data.map(point => point.power);
+
+        // Destroy existing chart
+        if (powerChart) {
+            powerChart.destroy();
+        }
+
+        // Create new chart
+        powerChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Total Power (W)',
+                    data,
+                    borderColor: '#ff9800',
+                    backgroundColor: '#ff980020',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#fff' }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: hours <= 24 ? 'hour' : 'day'
+                        },
+                        ticks: { color: '#888' },
+                        grid: { color: '#333' }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Power (W)',
+                            color: '#888'
+                        },
+                        ticks: { color: '#888' },
+                        grid: { color: '#333' }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading power chart:', error);
+    }
+}
+
+// Load Profitability Chart
+async function loadProfitabilityChart() {
+    try {
+        const response = await fetch(`${API_BASE}/api/energy/profitability/history?days=7`);
+        const result = await response.json();
+
+        if (!result.success) {
+            console.error('Error loading profitability history:', result.error);
+            return;
+        }
+
+        const ctx = document.getElementById('profitability-chart').getContext('2d');
+
+        // Prepare data
+        const labels = result.history.map(point => new Date(point.timestamp));
+        const profitData = result.history.map(point => point.profit_per_day);
+
+        // Destroy existing chart
+        if (profitabilityChart) {
+            profitabilityChart.destroy();
+        }
+
+        // Create new chart
+        profitabilityChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Profit per Day (USD)',
+                    data: profitData,
+                    borderColor: '#4CAF50',
+                    backgroundColor: '#4CAF5020',
+                    fill: true,
+                    tension: 0.4,
+                    segment: {
+                        borderColor: ctx => {
+                            const value = ctx.p1.parsed.y;
+                            return value >= 0 ? '#4CAF50' : '#f44336';
+                        },
+                        backgroundColor: ctx => {
+                            const value = ctx.p1.parsed.y;
+                            return value >= 0 ? '#4CAF5020' : '#f4433620';
+                        }
+                    }
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#fff' }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'day'
+                        },
+                        ticks: { color: '#888' },
+                        grid: { color: '#333' }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Profit (USD/day)',
+                            color: '#888'
+                        },
+                        ticks: { color: '#888' },
+                        grid: { color: '#333' }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading profitability chart:', error);
+    }
+}
+
+// Load Alerts Tab
+async function loadAlertsTab() {
+    await loadAlertHistory();
+}
+
+// Load Alert History
+async function loadAlertHistory() {
+    try {
+        const response = await fetch(`${API_BASE}/api/alerts/history?hours=24`);
+        const result = await response.json();
+
+        const container = document.getElementById('alert-history-container');
+
+        if (!result.success) {
+            container.innerHTML = '<p class="loading">Error loading alert history</p>';
+            return;
+        }
+
+        if (result.alerts.length === 0) {
+            container.innerHTML = '<p class="loading">No recent alerts</p>';
+            return;
+        }
+
+        let html = '';
+        result.alerts.forEach(alert => {
+            const time = new Date(alert.timestamp).toLocaleString();
+            html += `
+                <div class="alert-item ${alert.level}">
+                    <div class="alert-item-header">
+                        <div class="alert-item-title">${alert.title || 'Alert'}</div>
+                        <div class="alert-item-time">${time}</div>
+                    </div>
+                    <div class="alert-item-message">${alert.message}</div>
+                    <span class="alert-item-level ${alert.level}">${alert.level.toUpperCase()}</span>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    } catch (error) {
+        console.error('Error loading alert history:', error);
+    }
+}
+
+// Test Alert
+async function testAlert() {
+    try {
+        const response = await fetch(`${API_BASE}/api/alerts/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showAlert('Test alert sent!', 'success');
+        } else {
+            showAlert(`Error: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        showAlert(`Error sending test alert: ${error.message}`, 'error');
+    }
+}
+
+// Load Weather Tab
+async function loadWeatherTab() {
+    await loadCurrentWeather();
+    await loadWeatherForecast();
+    await loadThermalPrediction();
+    await loadOptimalHours();
+}
+
+// Load Current Weather
+async function loadCurrentWeather() {
+    try {
+        const response = await fetch(`${API_BASE}/api/weather/current`);
+        const result = await response.json();
+
+        const container = document.getElementById('current-weather-container');
+
+        if (!result.success) {
+            container.innerHTML = '<p class="loading">Weather not configured or unavailable</p>';
+            return;
+        }
+
+        const weather = result.weather;
+        container.innerHTML = `
+            <div class="weather-card">
+                <div class="weather-stat">
+                    <div class="weather-stat-label">Temperature</div>
+                    <div class="weather-stat-value">${weather.temp_f.toFixed(1)}°F</div>
+                    <div class="weather-stat-description">${weather.temp_c.toFixed(1)}°C</div>
+                </div>
+                <div class="weather-stat">
+                    <div class="weather-stat-label">Feels Like</div>
+                    <div class="weather-stat-value">${weather.feels_like_f.toFixed(1)}°F</div>
+                </div>
+                <div class="weather-stat">
+                    <div class="weather-stat-label">Humidity</div>
+                    <div class="weather-stat-value">${weather.humidity}%</div>
+                </div>
+                <div class="weather-stat">
+                    <div class="weather-stat-label">Conditions</div>
+                    <div class="weather-stat-description">${weather.description}</div>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading current weather:', error);
+    }
+}
+
+// Load Weather Forecast
+async function loadWeatherForecast() {
+    try {
+        const response = await fetch(`${API_BASE}/api/weather/forecast?hours=24`);
+        const result = await response.json();
+
+        const container = document.getElementById('weather-forecast-container');
+
+        if (!result.success) {
+            container.innerHTML = '<p class="loading">No forecast available</p>';
+            return;
+        }
+
+        let html = '<div class="forecast-grid">';
+        result.forecast.slice(0, 8).forEach(forecast => {
+            const time = new Date(forecast.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            html += `
+                <div class="forecast-item">
+                    <div class="forecast-time">${time}</div>
+                    <div class="forecast-temp">${forecast.temp_f.toFixed(0)}°F</div>
+                    <div class="forecast-desc">${forecast.description}</div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+    } catch (error) {
+        console.error('Error loading weather forecast:', error);
+    }
+}
+
+// Load Thermal Prediction
+async function loadThermalPrediction() {
+    try {
+        const response = await fetch(`${API_BASE}/api/weather/prediction`);
+        const result = await response.json();
+
+        const container = document.getElementById('thermal-prediction-container');
+
+        if (!result.success) {
+            container.innerHTML = '<p class="loading">No prediction available</p>';
+            return;
+        }
+
+        const pred = result.prediction;
+        const levelClass = pred.critical ? 'critical' : (pred.warning ? 'warning' : '');
+
+        let html = `
+            <div class="prediction-card ${levelClass}">
+                <div class="prediction-message">${pred.message}</div>
+                <div class="prediction-details">
+                    <div class="prediction-detail">
+                        <div class="prediction-detail-label">Current Ambient</div>
+                        <div class="prediction-detail-value">${pred.current_ambient_f.toFixed(1)}°F</div>
+                    </div>
+                    <div class="prediction-detail">
+                        <div class="prediction-detail-label">Forecast Max</div>
+                        <div class="prediction-detail-value">${pred.forecast_max_f.toFixed(1)}°F</div>
+                    </div>
+                    <div class="prediction-detail">
+                        <div class="prediction-detail-label">Estimated Miner Temp</div>
+                        <div class="prediction-detail-value">${pred.estimated_miner_temp_c.toFixed(1)}°C</div>
+                    </div>
+                </div>
+        `;
+
+        if (pred.recommendations && pred.recommendations.length > 0) {
+            html += `
+                <div class="recommendations-list">
+                    <h4>Recommendations</h4>
+                    <ul>
+                        ${pred.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        html += '</div>';
+        container.innerHTML = html;
+    } catch (error) {
+        console.error('Error loading thermal prediction:', error);
+    }
+}
+
+// Load Optimal Hours
+async function loadOptimalHours() {
+    try {
+        const response = await fetch(`${API_BASE}/api/weather/optimal-hours?hours=24&max_temp_f=80`);
+        const result = await response.json();
+
+        const container = document.getElementById('optimal-hours-container');
+
+        if (!result.success || result.optimal_periods.length === 0) {
+            container.innerHTML = '<p class="loading">No optimal periods found</p>';
+            return;
+        }
+
+        let html = '<div class="optimal-hours-grid">';
+        result.optimal_periods.forEach(period => {
+            html += `
+                <div class="optimal-period">
+                    <div class="optimal-period-time">${period.start} - ${period.end}</div>
+                    <div class="optimal-period-duration">${period.duration_hours} hours</div>
+                    <div class="optimal-period-temp">Avg: ${period.avg_temp_f.toFixed(1)}°F</div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+    } catch (error) {
+        console.error('Error loading optimal hours:', error);
+    }
+}
+
+// Event Listeners for Phase 4 features
+document.getElementById('refresh-charts-btn')?.addEventListener('click', loadChartsTab);
+document.getElementById('chart-time-range')?.addEventListener('change', loadChartsTab);
+document.getElementById('test-email-btn')?.addEventListener('click', testAlert);
+document.getElementById('test-discord-btn')?.addEventListener('click', testAlert);
+document.getElementById('test-slack-btn')?.addEventListener('click', testAlert);
+
+// Update auto-refresh to include new tabs
+const originalStartAutoRefresh = startAutoRefresh;
+startAutoRefresh = function() {
+    updateTimer = setInterval(() => {
+        if (currentTab === 'fleet') {
+            loadDashboard();
+        } else if (currentTab === 'energy') {
+            loadEnergyTab();
+        } else if (currentTab === 'charts') {
+            loadChartsTab();
+        } else if (currentTab === 'alerts') {
+            loadAlertsTab();
+        } else if (currentTab === 'weather') {
+            loadWeatherTab();
+        }
+    }, UPDATE_INTERVAL);
+};

@@ -460,3 +460,329 @@ h2 {
         opacity: 1;
     }
 }
+
+/* Charts Tab Styles */
+.chart-controls-section {
+    margin-bottom: 30px;
+}
+
+.form-group-inline {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.form-group-inline label {
+    margin: 0;
+    font-weight: 500;
+}
+
+.form-group-inline select {
+    flex: 0 0 auto;
+    min-width: 150px;
+}
+
+.chart-section {
+    margin-bottom: 40px;
+}
+
+.chart-section h3 {
+    color: #4CAF50;
+    margin-bottom: 20px;
+    font-size: 1.3rem;
+}
+
+.chart-container {
+    background: #2a2a2a;
+    padding: 25px;
+    border-radius: 8px;
+    position: relative;
+    height: 400px;
+}
+
+.chart-container canvas {
+    max-height: 100%;
+}
+
+/* Alerts Tab Styles */
+.alert-config-section .config-card {
+    margin-bottom: 30px;
+}
+
+.alert-config-section h3 {
+    color: #4CAF50;
+    margin-bottom: 20px;
+    font-size: 1.2rem;
+}
+
+.alert-config-section .btn-secondary {
+    margin-left: 10px;
+}
+
+.alert-history-section {
+    margin-top: 40px;
+}
+
+.alert-item {
+    background: #2a2a2a;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    border-left: 4px solid #4CAF50;
+}
+
+.alert-item.warning {
+    border-left-color: #ff9800;
+}
+
+.alert-item.critical {
+    border-left-color: #f44336;
+}
+
+.alert-item.emergency {
+    border-left-color: #d32f2f;
+}
+
+.alert-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.alert-item-title {
+    font-weight: 600;
+    font-size: 1.1rem;
+    color: #fff;
+}
+
+.alert-item-time {
+    color: #888;
+    font-size: 0.9rem;
+}
+
+.alert-item-message {
+    color: #ccc;
+    line-height: 1.6;
+}
+
+.alert-item-level {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    margin-top: 10px;
+}
+
+.alert-item-level.info {
+    background: #2196F3;
+    color: white;
+}
+
+.alert-item-level.warning {
+    background: #ff9800;
+    color: white;
+}
+
+.alert-item-level.critical {
+    background: #f44336;
+    color: white;
+}
+
+.alert-item-level.emergency {
+    background: #d32f2f;
+    color: white;
+}
+
+/* Weather Tab Styles */
+.weather-config-section p {
+    color: #ccc;
+    margin-bottom: 15px;
+}
+
+.weather-config-section a {
+    color: #4CAF50;
+    text-decoration: none;
+}
+
+.weather-config-section a:hover {
+    text-decoration: underline;
+}
+
+.current-weather-container {
+    background: #2a2a2a;
+    padding: 25px;
+    border-radius: 8px;
+}
+
+.weather-card {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.weather-stat {
+    text-align: center;
+    padding: 20px;
+    background: #1a1a1a;
+    border-radius: 8px;
+}
+
+.weather-stat-label {
+    color: #888;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+}
+
+.weather-stat-value {
+    color: #4CAF50;
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.weather-stat-description {
+    color: #ccc;
+    font-size: 0.95rem;
+    margin-top: 10px;
+}
+
+.forecast-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.forecast-item {
+    background: #2a2a2a;
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.forecast-time {
+    color: #4CAF50;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.forecast-temp {
+    font-size: 1.5rem;
+    color: #fff;
+    margin: 10px 0;
+}
+
+.forecast-desc {
+    color: #888;
+    font-size: 0.9rem;
+}
+
+.prediction-card {
+    background: #2a2a2a;
+    padding: 25px;
+    border-radius: 8px;
+    margin-top: 20px;
+}
+
+.prediction-card.warning {
+    border-left: 4px solid #ff9800;
+}
+
+.prediction-card.critical {
+    border-left: 4px solid #f44336;
+}
+
+.prediction-message {
+    font-size: 1.1rem;
+    color: #fff;
+    margin-bottom: 15px;
+}
+
+.prediction-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.prediction-detail {
+    background: #1a1a1a;
+    padding: 15px;
+    border-radius: 8px;
+}
+
+.prediction-detail-label {
+    color: #888;
+    font-size: 0.9rem;
+}
+
+.prediction-detail-value {
+    color: #4CAF50;
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin-top: 5px;
+}
+
+.recommendations-list {
+    background: #1a1a1a;
+    padding: 20px;
+    border-radius: 8px;
+    margin-top: 20px;
+}
+
+.recommendations-list h4 {
+    color: #4CAF50;
+    margin-bottom: 15px;
+}
+
+.recommendations-list ul {
+    list-style: none;
+    padding: 0;
+}
+
+.recommendations-list li {
+    color: #ccc;
+    padding: 8px 0;
+    padding-left: 25px;
+    position: relative;
+}
+
+.recommendations-list li:before {
+    content: "→";
+    position: absolute;
+    left: 0;
+    color: #4CAF50;
+}
+
+.optimal-hours-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.optimal-period {
+    background: #2a2a2a;
+    padding: 20px;
+    border-radius: 8px;
+    border-left: 4px solid #4CAF50;
+}
+
+.optimal-period-time {
+    color: #4CAF50;
+    font-weight: 600;
+    font-size: 1.1rem;
+    margin-bottom: 10px;
+}
+
+.optimal-period-duration {
+    color: #fff;
+    font-size: 0.95rem;
+    margin-bottom: 5px;
+}
+
+.optimal-period-temp {
+    color: #888;
+    font-size: 0.9rem;
+}
