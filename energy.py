@@ -335,32 +335,251 @@ class MiningScheduler:
 
 # Preset energy company rates
 ENERGY_COMPANY_PRESETS = {
+    # Major National/Regional Providers
+    "Xcel Energy (Colorado)": {
+        "location": "Colorado (Denver, Boulder, Fort Collins)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "14:00", "rate_per_kwh": 0.09, "rate_type": "off-peak"},
+            {"start_time": "14:00", "end_time": "19:00", "rate_per_kwh": 0.17, "rate_type": "peak"},
+            {"start_time": "19:00", "end_time": "23:59", "rate_per_kwh": 0.09, "rate_type": "off-peak"},
+        ]
+    },
+    "Xcel Energy (Minnesota)": {
+        "location": "Minnesota (Minneapolis, St. Paul)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "09:00", "rate_per_kwh": 0.08, "rate_type": "off-peak"},
+            {"start_time": "09:00", "end_time": "21:00", "rate_per_kwh": 0.14, "rate_type": "peak"},
+            {"start_time": "21:00", "end_time": "23:59", "rate_per_kwh": 0.08, "rate_type": "off-peak"},
+        ]
+    },
+    "Xcel Energy (Texas)": {
+        "location": "Texas (Lubbock, Amarillo)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "14:00", "rate_per_kwh": 0.10, "rate_type": "off-peak"},
+            {"start_time": "14:00", "end_time": "19:00", "rate_per_kwh": 0.16, "rate_type": "peak"},
+            {"start_time": "19:00", "end_time": "23:59", "rate_per_kwh": 0.10, "rate_type": "off-peak"},
+        ]
+    },
+
+    # California
     "PG&E (California)": {
-        "location": "California",
+        "location": "California (San Francisco, Sacramento, North CA)",
         "rates": [
             {"start_time": "00:00", "end_time": "15:00", "rate_per_kwh": 0.32, "rate_type": "off-peak"},
             {"start_time": "15:00", "end_time": "21:00", "rate_per_kwh": 0.52, "rate_type": "peak"},
             {"start_time": "21:00", "end_time": "23:59", "rate_per_kwh": 0.32, "rate_type": "off-peak"},
         ]
     },
-    "ConEd (New York)": {
-        "location": "New York",
+    "SCE (Southern California Edison)": {
+        "location": "California (Los Angeles, Orange County)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "16:00", "rate_per_kwh": 0.30, "rate_type": "off-peak"},
+            {"start_time": "16:00", "end_time": "21:00", "rate_per_kwh": 0.48, "rate_type": "peak"},
+            {"start_time": "21:00", "end_time": "23:59", "rate_per_kwh": 0.30, "rate_type": "off-peak"},
+        ]
+    },
+    "SDG&E (San Diego Gas & Electric)": {
+        "location": "California (San Diego)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "16:00", "rate_per_kwh": 0.35, "rate_type": "off-peak"},
+            {"start_time": "16:00", "end_time": "21:00", "rate_per_kwh": 0.58, "rate_type": "peak"},
+            {"start_time": "21:00", "end_time": "23:59", "rate_per_kwh": 0.35, "rate_type": "off-peak"},
+        ]
+    },
+
+    # New York
+    "ConEd (Consolidated Edison)": {
+        "location": "New York (NYC, Westchester)",
         "rates": [
             {"start_time": "00:00", "end_time": "08:00", "rate_per_kwh": 0.18, "rate_type": "off-peak"},
             {"start_time": "08:00", "end_time": "20:00", "rate_per_kwh": 0.25, "rate_type": "peak"},
             {"start_time": "20:00", "end_time": "23:59", "rate_per_kwh": 0.18, "rate_type": "off-peak"},
         ]
     },
-    "Texas Electric (Texas)": {
-        "location": "Texas",
+    "NYSEG (New York State Electric & Gas)": {
+        "location": "New York (Upstate, Rochester, Syracuse)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.16, "rate_type": "standard"},
+        ]
+    },
+
+    # Texas
+    "Oncor (Texas)": {
+        "location": "Texas (Dallas, Fort Worth)",
         "rates": [
             {"start_time": "00:00", "end_time": "14:00", "rate_per_kwh": 0.11, "rate_type": "off-peak"},
             {"start_time": "14:00", "end_time": "19:00", "rate_per_kwh": 0.18, "rate_type": "peak"},
             {"start_time": "19:00", "end_time": "23:59", "rate_per_kwh": 0.11, "rate_type": "off-peak"},
         ]
     },
+    "CenterPoint Energy (Texas)": {
+        "location": "Texas (Houston)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "14:00", "rate_per_kwh": 0.10, "rate_type": "off-peak"},
+            {"start_time": "14:00", "end_time": "19:00", "rate_per_kwh": 0.17, "rate_type": "peak"},
+            {"start_time": "19:00", "end_time": "23:59", "rate_per_kwh": 0.10, "rate_type": "off-peak"},
+        ]
+    },
+    "AEP Texas": {
+        "location": "Texas (Corpus Christi, South TX)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.12, "rate_type": "standard"},
+        ]
+    },
+
+    # Florida
+    "FPL (Florida Power & Light)": {
+        "location": "Florida (Miami, Fort Lauderdale, West Palm Beach)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "12:00", "rate_per_kwh": 0.11, "rate_type": "off-peak"},
+            {"start_time": "12:00", "end_time": "21:00", "rate_per_kwh": 0.15, "rate_type": "peak"},
+            {"start_time": "21:00", "end_time": "23:59", "rate_per_kwh": 0.11, "rate_type": "off-peak"},
+        ]
+    },
+    "Duke Energy Florida": {
+        "location": "Florida (Tampa, St. Petersburg, Orlando)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.12, "rate_type": "standard"},
+        ]
+    },
+
+    # Georgia
+    "Georgia Power": {
+        "location": "Georgia (Atlanta, Savannah)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "14:00", "rate_per_kwh": 0.10, "rate_type": "off-peak"},
+            {"start_time": "14:00", "end_time": "19:00", "rate_per_kwh": 0.16, "rate_type": "peak"},
+            {"start_time": "19:00", "end_time": "23:59", "rate_per_kwh": 0.10, "rate_type": "off-peak"},
+        ]
+    },
+
+    # North/South Carolina
+    "Duke Energy Carolinas": {
+        "location": "North Carolina, South Carolina (Charlotte, Raleigh)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.11, "rate_type": "standard"},
+        ]
+    },
+
+    # Illinois
+    "ComEd (Commonwealth Edison)": {
+        "location": "Illinois (Chicago)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "13:00", "rate_per_kwh": 0.09, "rate_type": "off-peak"},
+            {"start_time": "13:00", "end_time": "19:00", "rate_per_kwh": 0.15, "rate_type": "peak"},
+            {"start_time": "19:00", "end_time": "23:59", "rate_per_kwh": 0.09, "rate_type": "off-peak"},
+        ]
+    },
+
+    # Ohio
+    "AEP Ohio": {
+        "location": "Ohio (Columbus)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.10, "rate_type": "standard"},
+        ]
+    },
+    "Duke Energy Ohio": {
+        "location": "Ohio (Cincinnati)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.11, "rate_type": "standard"},
+        ]
+    },
+
+    # Michigan
+    "DTE Energy": {
+        "location": "Michigan (Detroit)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "11:00", "rate_per_kwh": 0.12, "rate_type": "off-peak"},
+            {"start_time": "11:00", "end_time": "19:00", "rate_per_kwh": 0.18, "rate_type": "peak"},
+            {"start_time": "19:00", "end_time": "23:59", "rate_per_kwh": 0.12, "rate_type": "off-peak"},
+        ]
+    },
+
+    # Pennsylvania
+    "PECO Energy": {
+        "location": "Pennsylvania (Philadelphia)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.13, "rate_type": "standard"},
+        ]
+    },
+
+    # Washington
+    "Seattle City Light": {
+        "location": "Washington (Seattle)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.11, "rate_type": "standard"},
+        ]
+    },
+    "Puget Sound Energy": {
+        "location": "Washington (Bellevue, Tacoma)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.10, "rate_type": "standard"},
+        ]
+    },
+
+    # Oregon
+    "Portland General Electric": {
+        "location": "Oregon (Portland)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.11, "rate_type": "standard"},
+        ]
+    },
+
+    # Nevada
+    "NV Energy": {
+        "location": "Nevada (Las Vegas, Reno)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "13:00", "rate_per_kwh": 0.10, "rate_type": "off-peak"},
+            {"start_time": "13:00", "end_time": "19:00", "rate_per_kwh": 0.16, "rate_type": "peak"},
+            {"start_time": "19:00", "end_time": "23:59", "rate_per_kwh": 0.10, "rate_type": "off-peak"},
+        ]
+    },
+
+    # Arizona
+    "APS (Arizona Public Service)": {
+        "location": "Arizona (Phoenix)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "15:00", "rate_per_kwh": 0.10, "rate_type": "off-peak"},
+            {"start_time": "15:00", "end_time": "20:00", "rate_per_kwh": 0.18, "rate_type": "peak"},
+            {"start_time": "20:00", "end_time": "23:59", "rate_per_kwh": 0.10, "rate_type": "off-peak"},
+        ]
+    },
+
+    # Utah
+    "Rocky Mountain Power (Utah)": {
+        "location": "Utah (Salt Lake City)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.10, "rate_type": "standard"},
+        ]
+    },
+
+    # Idaho
+    "Idaho Power": {
+        "location": "Idaho (Boise)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.09, "rate_type": "standard"},
+        ]
+    },
+
+    # Montana
+    "NorthWestern Energy (Montana)": {
+        "location": "Montana (Billings, Missoula)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.11, "rate_type": "standard"},
+        ]
+    },
+
+    # Wyoming
+    "Rocky Mountain Power (Wyoming)": {
+        "location": "Wyoming (Cheyenne)",
+        "rates": [
+            {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.09, "rate_type": "standard"},
+        ]
+    },
+
+    # Custom Entry
     "Custom (Manual Entry)": {
-        "location": "Custom",
+        "location": "Custom Location",
         "rates": [
             {"start_time": "00:00", "end_time": "23:59", "rate_per_kwh": 0.12, "rate_type": "standard"},
         ]

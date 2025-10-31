@@ -42,13 +42,27 @@ class BitaxeAPIHandler(MinerAPIHandler):
             response.raise_for_status()
             data = response.json()
 
+            # Bitaxe API returns hashRate in GH/s, convert to H/s
+            hashrate_ghs = float(data.get('hashRate', 0))
+            hashrate_hs = hashrate_ghs * 1e9  # Convert GH/s to H/s
+
+            # Detect model - check for NerdQAxe, NerdQAxePlus, NerdQAxePlusPlus, etc.
+            asic_model = data.get('ASICModel', '')
+            board_version = data.get('boardVersion', '')
+
+            # Determine model name
+            if 'nerd' in asic_model.lower() or 'nerd' in board_version.lower():
+                model = asic_model or board_version or 'NerdQAxe'
+            else:
+                model = asic_model or 'Bitaxe'
+
             # Parse Bitaxe response format
             return {
-                'hashrate': float(data.get('hashRate', 0)),
+                'hashrate': hashrate_hs,
                 'temperature': float(data.get('temp', 0)),
                 'power': float(data.get('power', 0)),
                 'fan_speed': int(data.get('fanspeed', 0)),
-                'model': data.get('ASICModel', 'Bitaxe'),
+                'model': model,
                 'frequency': data.get('frequency', 0),
                 'status': 'online',
                 'raw': data
