@@ -1461,22 +1461,26 @@ function createPoolCard(miner) {
     const ipId = miner.ip.replace(/\./g, '-');
     const pools = miner.pools || [];
 
-    // Ensure we have at least 3 pool slots
-    while (pools.length < 3) {
+    // Only support 2 pools: Primary and Secondary (Backup)
+    while (pools.length < 2) {
         pools.push({ url: '', user: '', password: 'x' });
     }
+    // Limit to 2 pools
+    const limitedPools = pools.slice(0, 2);
+
+    const poolLabels = ['Primary Pool', 'Secondary Pool (Backup)'];
 
     return `
         <div class="pool-card">
             <div class="pool-card-header">
-                <h3>${miner.model || miner.type}</h3>
+                <h3>${miner.custom_name || miner.model || miner.type}</h3>
                 <div class="pool-card-ip">${miner.ip}</div>
             </div>
             <form id="pool-form-${ipId}" class="pool-form">
                 <div class="pools-grid">
-                    ${pools.map((pool, index) => `
-                        <div class="pool-item">
-                            <h4>Pool ${index + 1} ${index === miner.active_pool ? '(Active)' : ''}</h4>
+                    ${limitedPools.map((pool, index) => `
+                        <div class="pool-item ${index === miner.active_pool ? 'active' : ''}">
+                            <h4>${poolLabels[index]} ${index === miner.active_pool ? '✓ Active' : ''}</h4>
                             <div class="form-group">
                                 <label>Pool URL:</label>
                                 <input type="text"
@@ -1517,9 +1521,9 @@ async function savePoolConfig(ip) {
     const form = document.getElementById(`pool-form-${ipId}`);
     const formData = new FormData(form);
 
-    // Build pools array
+    // Build pools array - Only Primary and Secondary
     const pools = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
         const url = formData.get(`pool${i}_url`);
         const user = formData.get(`pool${i}_user`);
         const password = formData.get(`pool${i}_password`) || 'x';
@@ -1530,7 +1534,7 @@ async function savePoolConfig(ip) {
     }
 
     if (pools.length === 0) {
-        showAlert('At least one pool configuration is required', 'error');
+        showAlert('❌ Primary pool configuration is required', 'error');
         return;
     }
 

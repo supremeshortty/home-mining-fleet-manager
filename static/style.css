@@ -1119,6 +1119,16 @@ h3 {
     border-color: var(--primary-color);
 }
 
+.pool-item.active {
+    background: rgba(76, 175, 80, 0.1);
+    border-color: var(--success-color);
+    border-width: 2px;
+}
+
+.pool-item.active h4 {
+    color: var(--success-color);
+}
+
 .pool-item h4 {
     margin: 0 0 16px 0;
     color: var(--primary-color);
