@@ -71,7 +71,8 @@ async function loadDashboard() {
     try {
         await Promise.all([
             loadStats(),
-            loadMiners()
+            loadMiners(),
+            loadFleetCombinedChart()
         ]);
         updateLastUpdateTime();
     } catch (error) {
@@ -530,11 +531,192 @@ function updateLastUpdateTime() {
 }
 
 // ============================================================================
+// FLEET PAGE CHART
+// ============================================================================
+
+// Load Fleet Combined Chart (6 hours, compact view for dashboard)
+async function loadFleetCombinedChart() {
+    const hours = 6; // Fixed 6-hour view for fleet page
+    try {
+        // Fetch both temperature and hashrate data in parallel
+        const [tempResponse, hashrateResponse] = await Promise.all([
+            fetch(`${API_BASE}/api/history/temperature?hours=${hours}`),
+            fetch(`${API_BASE}/api/history/hashrate?hours=${hours}`)
+        ]);
+
+        const tempResult = await tempResponse.json();
+        const hashrateResult = await hashrateResponse.json();
+
+        if (!tempResult.success || !hashrateResult.success) {
+            console.error('Error loading fleet chart data');
+            return;
+        }
+
+        const ctx = document.getElementById('fleet-combined-chart').getContext('2d');
+
+        // Prepare hashrate dataset (single line, total hashrate)
+        const hashrateData = hashrateResult.data.map(point => ({
+            x: new Date(point.timestamp),
+            y: point.hashrate_ths
+        }));
+
+        // Group temperature data by miner IP
+        const minerTempData = {};
+        tempResult.data.forEach(point => {
+            if (!minerTempData[point.miner_ip]) {
+                minerTempData[point.miner_ip] = [];
+            }
+            minerTempData[point.miner_ip].push({
+                x: new Date(point.timestamp),
+                y: point.temperature
+            });
+        });
+
+        // Create datasets
+        const datasets = [];
+
+        // Add hashrate dataset (left y-axis)
+        datasets.push({
+            label: 'Total Hashrate',
+            data: hashrateData,
+            borderColor: '#4CAF50',
+            backgroundColor: '#4CAF5020',
+            borderWidth: 1.5,
+            fill: true,
+            tension: 0.3,
+            yAxisID: 'y-hashrate',
+            order: 1,
+            pointRadius: 0,
+            pointHoverRadius: 4
+        });
+
+        // Add temperature datasets for each miner (right y-axis)
+        const tempColors = ['#2196F3', '#ff9800', '#f44336', '#9c27b0', '#00bcd4', '#ffeb3b'];
+        Object.keys(minerTempData).forEach((ip, index) => {
+            datasets.push({
+                label: `${ip} Temp`,
+                data: minerTempData[ip],
+                borderColor: tempColors[index % tempColors.length],
+                backgroundColor: 'transparent',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.3,
+                yAxisID: 'y-temperature',
+                order: 2,
+                pointRadius: 0,
+                pointHoverRadius: 4
+            });
+        });
+
+        // Destroy existing chart
+        if (fleetCombinedChart) {
+            fleetCombinedChart.destroy();
+        }
+
+        // Create new dual-axis chart
+        fleetCombinedChart = new Chart(ctx, {
+            type: 'line',
+            data: { datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#fff',
+                            usePointStyle: true,
+                            padding: 15
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    if (context.dataset.yAxisID === 'y-hashrate') {
+                                        label += context.parsed.y.toFixed(2) + ' TH/s';
+                                    } else {
+                                        label += context.parsed.y.toFixed(1) + '°C';
+                                    }
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'hour'
+                        },
+                        ticks: { color: '#888' },
+                        grid: { color: '#333' }
+                    },
+                    'y-hashrate': {
+                        type: 'linear',
+                        position: 'left',
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Hashrate (TH/s)',
+                            color: '#4CAF50'
+                        },
+                        ticks: {
+                            color: '#4CAF50',
+                            callback: function(value) {
+                                return value.toFixed(2);
+                            }
+                        },
+                        grid: {
+                            color: '#333',
+                            drawOnChartArea: true
+                        }
+                    },
+                    'y-temperature': {
+                        type: 'linear',
+                        position: 'right',
+                        min: 0,
+                        max: 200,
+                        title: {
+                            display: true,
+                            text: 'Temperature (°C)',
+                            color: '#2196F3'
+                        },
+                        ticks: {
+                            color: '#2196F3',
+                            stepSize: 50,
+                            callback: function(value) {
+                                return value.toFixed(0) + '°C';
+                            }
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading fleet combined chart:', error);
+    }
+}
+
+// ============================================================================
 // PHASE 4: CHARTS, ALERTS, AND WEATHER
 // ============================================================================
 
 // Chart instances
 let combinedChart = null;
+let fleetCombinedChart = null;
 let powerChart = null;
 let profitabilityChart = null;
 
@@ -592,11 +774,13 @@ async function loadCombinedChart(hours = 24) {
             data: hashrateData,
             borderColor: '#4CAF50',
             backgroundColor: '#4CAF5020',
-            borderWidth: 2.5,
+            borderWidth: 1.5,
             fill: true,
-            tension: 0.4,
+            tension: 0.3,
             yAxisID: 'y-hashrate',
-            order: 1
+            order: 1,
+            pointRadius: 0,
+            pointHoverRadius: 4
         });
 
         // Add temperature datasets for each miner (right y-axis)
@@ -607,11 +791,13 @@ async function loadCombinedChart(hours = 24) {
                 data: minerTempData[ip],
                 borderColor: tempColors[index % tempColors.length],
                 backgroundColor: 'transparent',
-                borderWidth: 2,
+                borderWidth: 1.5,
                 fill: false,
-                tension: 0.4,
+                tension: 0.3,
                 yAxisID: 'y-temperature',
-                order: 2
+                order: 2,
+                pointRadius: 0,
+                pointHoverRadius: 4
             });
         });
 
@@ -627,6 +813,7 @@ async function loadCombinedChart(hours = 24) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: false,
                 interaction: {
                     mode: 'index',
                     intersect: false
@@ -749,12 +936,16 @@ async function loadPowerChart(hours = 24) {
                     borderColor: '#ff9800',
                     backgroundColor: '#ff980020',
                     fill: true,
-                    tension: 0.4
+                    tension: 0.3,
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    pointHoverRadius: 4
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: false,
                 plugins: {
                     legend: {
                         labels: { color: '#fff' }
@@ -820,7 +1011,10 @@ async function loadProfitabilityChart() {
                     borderColor: '#4CAF50',
                     backgroundColor: '#4CAF5020',
                     fill: true,
-                    tension: 0.4,
+                    tension: 0.3,
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
                     segment: {
                         borderColor: ctx => {
                             const value = ctx.p1.parsed.y;
@@ -836,6 +1030,7 @@ async function loadProfitabilityChart() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: false,
                 plugins: {
                     legend: {
                         labels: { color: '#fff' }
