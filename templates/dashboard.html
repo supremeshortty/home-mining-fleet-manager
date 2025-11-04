@@ -343,6 +343,45 @@
                     <canvas id="profitability-chart"></canvas>
                 </div>
             </section>
+
+            <!-- Efficiency Chart -->
+            <section class="chart-section">
+                <h3>Mining Efficiency - Hashrate per Watt</h3>
+                <div class="chart-container">
+                    <canvas id="efficiency-chart"></canvas>
+                </div>
+            </section>
+
+            <!-- Shares Rate Chart -->
+            <section class="chart-section">
+                <h3>Shares Accepted vs Rejected</h3>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="shares-chart"></canvas>
+                </div>
+            </section>
+
+            <!-- Performance Metrics Grid -->
+            <section class="chart-section">
+                <h3>Current Performance Metrics</h3>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Fleet Efficiency</div>
+                        <div class="stat-value" id="fleet-efficiency">0 GH/W</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Accept Rate</div>
+                        <div class="stat-value success" id="accept-rate">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Reject Rate</div>
+                        <div class="stat-value" id="reject-rate">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Avg Temp</div>
+                        <div class="stat-value" id="charts-avg-temp">0°C</div>
+                    </div>
+                </div>
+            </section>
         </div>
 
         <!-- Alerts Tab -->

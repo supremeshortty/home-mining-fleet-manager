@@ -838,13 +838,19 @@ let combinedChart = null;
 let fleetCombinedChart = null;
 let powerChart = null;
 let profitabilityChart = null;
+let efficiencyChart = null;
+let sharesChart = null;
 
 // Load Charts Tab
 async function loadChartsTab() {
     const hours = parseInt(document.getElementById('chart-time-range').value);
-    await loadCombinedChart(hours);
-    await loadPowerChart(hours);
-    await loadProfitabilityChart();
+    await Promise.all([
+        loadCombinedChart(hours),
+        loadPowerChart(hours),
+        loadProfitabilityChart(),
+        loadEfficiencyChart(hours),
+        loadSharesMetrics()
+    ]);
 }
 
 // Load Combined Hashrate & Temperature Chart (AxeOS-style)
@@ -1178,6 +1184,151 @@ async function loadProfitabilityChart() {
         });
     } catch (error) {
         console.error('Error loading profitability chart:', error);
+    }
+}
+
+// Load Efficiency Chart
+async function loadEfficiencyChart(hours = 24) {
+    try {
+        const response = await fetch(`${API_BASE}/api/history/hashrate?hours=${hours}`);
+        const result = await response.json();
+
+        if (!result.success) return;
+
+        const ctx = document.getElementById('efficiency-chart').getContext('2d');
+
+        // Calculate efficiency (GH/s per Watt) for each data point
+        const efficiencyData = result.data.map(point => {
+            // Get corresponding power data (simplified - using average power)
+            const efficiency = point.hashrate_ths / (point.total_power || 1) * 1000; // Convert to GH/W
+            return {
+                x: new Date(point.timestamp),
+                y: efficiency
+            };
+        });
+
+        if (efficiencyChart) {
+            efficiencyChart.destroy();
+        }
+
+        efficiencyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [{
+                    label: 'Fleet Efficiency (GH/W)',
+                    data: efficiencyData,
+                    borderColor: '#00d9a3',
+                    backgroundColor: '#00d9a320',
+                    fill: true,
+                    tension: 0.3,
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    pointHoverRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#fff' }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: hours <= 24 ? 'hour' : 'day'
+                        },
+                        ticks: { color: '#888' },
+                        grid: { color: '#333' }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Efficiency (GH/W)',
+                            color: '#888'
+                        },
+                        ticks: { color: '#888' },
+                        grid: { color: '#333' }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading efficiency chart:', error);
+    }
+}
+
+// Load Shares Metrics
+async function loadSharesMetrics() {
+    try {
+        const response = await fetch(`${API_BASE}/api/stats`);
+        const result = await response.json();
+
+        if (!result.success) return;
+
+        const stats = result.stats;
+        const totalShares = stats.total_shares || 0;
+        const totalRejected = stats.total_rejected || 0;
+        const totalAttempts = totalShares + totalRejected;
+
+        const acceptRate = totalAttempts > 0 ? ((totalShares / totalAttempts) * 100).toFixed(2) : 0;
+        const rejectRate = totalAttempts > 0 ? ((totalRejected / totalAttempts) * 100).toFixed(2) : 0;
+
+        // Update metrics
+        const efficiency = stats.total_power > 0 ? ((stats.total_hashrate / 1e9) / stats.total_power * 1000).toFixed(2) : 0;
+        document.getElementById('fleet-efficiency').textContent = `${efficiency} GH/W`;
+        document.getElementById('accept-rate').textContent = `${acceptRate}%`;
+        document.getElementById('reject-rate').textContent = `${rejectRate}%`;
+        document.getElementById('charts-avg-temp').textContent = `${stats.avg_temperature.toFixed(1)}°C`;
+
+        // Create shares pie chart
+        const ctx = document.getElementById('shares-chart').getContext('2d');
+
+        if (sharesChart) {
+            sharesChart.destroy();
+        }
+
+        sharesChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Accepted', 'Rejected'],
+                datasets: [{
+                    data: [totalShares, totalRejected],
+                    backgroundColor: ['#00d9a3', '#f44336'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#fff',
+                            font: { size: 14 }
+                        },
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                const percentage = totalAttempts > 0 ? ((value / totalAttempts) * 100).toFixed(2) : 0;
+                                return `${label}: ${formatNumber(value)} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading shares metrics:', error);
     }
 }
 
