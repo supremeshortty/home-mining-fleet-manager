@@ -829,6 +829,88 @@ def energy_rates():
             }), 500
 
 
+@app.route('/api/energy/rates/custom', methods=['POST'])
+def set_custom_energy_rates():
+    """Set custom energy rates"""
+    try:
+        data = request.get_json()
+        standard_rate = float(data.get('standard_rate', 0))
+        peak_rate = data.get('peak_rate')
+        offpeak_rate = data.get('offpeak_rate')
+
+        if standard_rate <= 0:
+            return jsonify({
+                'success': False,
+                'error': 'Standard rate must be greater than 0'
+            }), 400
+
+        # Build rate structure
+        rates = []
+
+        # If peak/offpeak rates provided, create time-of-use schedule
+        if peak_rate and offpeak_rate:
+            # Peak hours: 4 PM - 9 PM weekdays
+            rates.append({
+                'day_of_week': 'weekday',
+                'start_time': '16:00',
+                'end_time': '21:00',
+                'rate_per_kwh': float(peak_rate),
+                'rate_type': 'peak'
+            })
+            # Off-peak hours: 11 PM - 7 AM
+            rates.append({
+                'day_of_week': None,
+                'start_time': '23:00',
+                'end_time': '07:00',
+                'rate_per_kwh': float(offpeak_rate),
+                'rate_type': 'off-peak'
+            })
+            # Standard for remaining hours
+            rates.append({
+                'day_of_week': None,
+                'start_time': '07:00',
+                'end_time': '16:00',
+                'rate_per_kwh': standard_rate,
+                'rate_type': 'standard'
+            })
+            rates.append({
+                'day_of_week': None,
+                'start_time': '21:00',
+                'end_time': '23:00',
+                'rate_per_kwh': standard_rate,
+                'rate_type': 'standard'
+            })
+        else:
+            # Flat rate 24/7
+            rates.append({
+                'day_of_week': None,
+                'start_time': '00:00',
+                'end_time': '23:59',
+                'rate_per_kwh': standard_rate,
+                'rate_type': 'standard'
+            })
+
+        # Apply rates
+        fleet.energy_rate_mgr.set_tou_rates(rates)
+        fleet.db.set_energy_config(
+            location='Custom',
+            energy_company='Custom (Manual Entry)'
+        )
+
+        return jsonify({
+            'success': True,
+            'message': 'Custom energy rates applied successfully',
+            'rates_count': len(rates)
+        })
+
+    except Exception as e:
+        logger.error(f"Error setting custom rates: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/energy/presets', methods=['GET'])
 def energy_presets():
     """Get available energy company presets"""

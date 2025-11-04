@@ -17,6 +17,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Energy config form
     document.getElementById('energy-config-form').addEventListener('submit', applyEnergyPreset);
 
+    // Show/hide custom rate entry based on dropdown selection
+    document.getElementById('energy-company').addEventListener('change', function() {
+        const customRateEntry = document.getElementById('custom-rate-entry');
+        if (this.value === 'Custom (Manual Entry)') {
+            customRateEntry.style.display = 'block';
+        } else {
+            customRateEntry.style.display = 'none';
+        }
+    });
+
     // Mining schedule form
     document.getElementById('mining-schedule-form').addEventListener('submit', createMiningSchedule);
 });
@@ -370,13 +380,51 @@ async function applyEnergyPreset(e) {
     e.preventDefault();
 
     const preset = document.getElementById('energy-company').value;
-    const location = document.getElementById('location').value;
 
     if (!preset) {
         showAlert('Please select an energy company', 'error');
         return;
     }
 
+    // If custom rates selected, validate and send custom rates
+    if (preset === 'Custom (Manual Entry)') {
+        const customRate = parseFloat(document.getElementById('custom-rate').value);
+        const customPeakRate = parseFloat(document.getElementById('custom-peak-rate').value) || null;
+        const customOffpeakRate = parseFloat(document.getElementById('custom-offpeak-rate').value) || null;
+
+        if (!customRate || customRate <= 0) {
+            showAlert('Please enter a valid standard rate', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE}/api/energy/rates/custom`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    standard_rate: customRate,
+                    peak_rate: customPeakRate,
+                    offpeak_rate: customOffpeakRate
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showAlert('✅ Custom energy rates applied successfully!', 'success');
+                loadEnergyTab();
+            } else {
+                showAlert(`Error: ${data.error}`, 'error');
+            }
+        } catch (error) {
+            showAlert(`Error applying custom rates: ${error.message}`, 'error');
+        }
+        return;
+    }
+
+    // Apply preset rates
     try {
         const response = await fetch(`${API_BASE}/api/energy/rates`, {
             method: 'POST',

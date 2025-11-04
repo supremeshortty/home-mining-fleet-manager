@@ -194,6 +194,28 @@
                             </select>
                         </div>
 
+                        <!-- Custom Rate Entry (shown when Custom selected) -->
+                        <div id="custom-rate-entry" style="display: none; margin-top: 24px; padding: 20px; background: rgba(247, 147, 26, 0.1); border-radius: 12px; border: 1px solid var(--border-glow);">
+                            <h4 style="color: var(--primary-color); margin-bottom: 16px;">⚡ Custom Energy Rates</h4>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="custom-rate">Standard Rate ($/kWh):</label>
+                                    <input type="number" id="custom-rate" name="custom_rate" step="0.001" min="0" placeholder="e.g., 0.12">
+                                </div>
+                                <div class="form-group">
+                                    <label for="custom-peak-rate">Peak Rate ($/kWh) - Optional:</label>
+                                    <input type="number" id="custom-peak-rate" name="custom_peak_rate" step="0.001" min="0" placeholder="e.g., 0.25">
+                                </div>
+                                <div class="form-group">
+                                    <label for="custom-offpeak-rate">Off-Peak Rate ($/kWh) - Optional:</label>
+                                    <input type="number" id="custom-offpeak-rate" name="custom_offpeak_rate" step="0.001" min="0" placeholder="e.g., 0.08">
+                                </div>
+                            </div>
+                            <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 10px;">
+                                Enter your energy rates. If you have time-of-use pricing, fill in peak and off-peak rates as well.
+                            </p>
+                        </div>
+
                         <div class="location-fields">
                             <h4 style="color: var(--text-primary); margin: 20px 0 15px 0; font-size: 1rem;">📍 Your Location (Optional)</h4>
                             <div class="form-grid">
