@@ -14,12 +14,13 @@ logger = logging.getLogger(__name__)
 class Miner:
     """Represents a single miner with its API handler"""
 
-    def __init__(self, ip: str, miner_type: str, api_handler: MinerAPIHandler):
+    def __init__(self, ip: str, miner_type: str, api_handler: MinerAPIHandler, custom_name: str = None):
         self.ip = ip
         self.type = miner_type
         self.api_handler = api_handler
         self.last_status = None
         self.model = None
+        self.custom_name = custom_name
 
     def update_status(self) -> Dict:
         """Update and return current status"""
@@ -42,6 +43,7 @@ class Miner:
             'ip': self.ip,
             'type': self.type,
             'model': self.model,
+            'custom_name': self.custom_name,
             'last_status': self.last_status
         }
 

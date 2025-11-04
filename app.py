@@ -75,9 +75,11 @@ class FleetManager:
         miners_data = self.db.get_all_miners()
         for miner_data in miners_data:
             ip = miner_data['ip']
+            custom_name = miner_data.get('custom_name')
             # Try to recreate Miner instance
             miner = self.detector.detect(ip)
             if miner:
+                miner.custom_name = custom_name
                 with self.lock:
                     self.miners[ip] = miner
                 logger.info(f"Loaded miner {ip} ({miner.type})")
@@ -619,6 +621,38 @@ def delete_miner(ip: str):
             'success': False,
             'error': 'Miner not found'
         }), 404
+
+
+@app.route('/api/miner/<ip>/name', methods=['POST'])
+def update_miner_name(ip: str):
+    """Update custom name for a miner"""
+    data = request.get_json() or {}
+    custom_name = data.get('custom_name', '').strip()
+
+    with fleet.lock:
+        miner = fleet.miners.get(ip)
+        if not miner:
+            return jsonify({
+                'success': False,
+                'error': 'Miner not found'
+            }), 404
+
+        # Update in database
+        success = fleet.db.update_miner_custom_name(ip, custom_name)
+
+        if success:
+            # Update in memory
+            miner.custom_name = custom_name if custom_name else None
+            return jsonify({
+                'success': True,
+                'message': f'Miner name updated',
+                'custom_name': miner.custom_name
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to update name'
+            }), 500
 
 
 @app.route('/api/miner/<ip>/pools', methods=['GET'])

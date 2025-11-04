@@ -152,10 +152,17 @@ function createMinerCard(miner) {
     // Extract chip type from raw data
     const chipType = status.raw?.ASICModel || 'Unknown';
 
+    // Use custom name if set, otherwise use model or type
+    const displayName = miner.custom_name || miner.model || miner.type;
+    const isCustomName = !!miner.custom_name;
+
     return `
         <div class="miner-card ${offlineClass}">
             <div class="miner-header">
-                <div class="miner-title">${miner.model || miner.type}</div>
+                <div class="miner-title" id="miner-title-${miner.ip.replace(/\./g, '-')}" data-ip="${miner.ip}">
+                    ${displayName}
+                    <span class="edit-name-btn" onclick="editMinerName('${miner.ip}', '${(miner.custom_name || '').replace(/'/g, "\\'")}')">✏️</span>
+                </div>
                 <div class="miner-type">${miner.type}</div>
             </div>
             <div class="miner-ip">${miner.ip}</div>
@@ -316,6 +323,35 @@ async function deleteMiner(ip) {
         }
     } catch (error) {
         showAlert(`Error removing ${ip}: ${error.message}`, 'error');
+    }
+}
+
+// Edit miner name
+async function editMinerName(ip, currentName) {
+    const newName = prompt(`Enter custom name for ${ip}:`, currentName || '');
+
+    // User cancelled
+    if (newName === null) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/miner/${ip}/name`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ custom_name: newName })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showAlert(`Miner name updated`, 'success');
+            loadDashboard();
+        } else {
+            showAlert(`Failed to update name: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        showAlert(`Error updating name: ${error.message}`, 'error');
     }
 }
 

@@ -44,6 +44,7 @@ class Database:
                     ip TEXT UNIQUE NOT NULL,
                     miner_type TEXT NOT NULL,
                     model TEXT,
+                    custom_name TEXT,
                     discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -190,6 +191,13 @@ class Database:
                 ON alert_history(timestamp)
             """)
 
+            # Migrations: Add custom_name column if it doesn't exist
+            cursor.execute("PRAGMA table_info(miners)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if 'custom_name' not in columns:
+                logger.info("Adding custom_name column to miners table")
+                cursor.execute("ALTER TABLE miners ADD COLUMN custom_name TEXT")
+
             logger.info("Database initialized successfully")
 
     def add_miner(self, ip: str, miner_type: str, model: str = None) -> int:
@@ -280,6 +288,17 @@ class Database:
             """, (miner_id, f'-{hours}'))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
+
+    def update_miner_custom_name(self, ip: str, custom_name: str):
+        """Update custom name for a miner"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE miners
+                SET custom_name = ?
+                WHERE ip = ?
+            """, (custom_name if custom_name else None, ip))
+            return cursor.rowcount > 0
 
     def delete_miner(self, ip: str):
         """Delete a miner and its stats"""

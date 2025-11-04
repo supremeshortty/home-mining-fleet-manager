@@ -491,6 +491,21 @@ h3 {
     font-weight: 800;
     color: var(--text-primary);
     letter-spacing: -0.3px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.edit-name-btn {
+    cursor: pointer;
+    font-size: 1rem;
+    opacity: 0.5;
+    transition: all 0.3s;
+}
+
+.edit-name-btn:hover {
+    opacity: 1;
+    transform: scale(1.2);
 }
 
 .miner-type {
