@@ -337,7 +337,11 @@ class MiningScheduler:
 ENERGY_COMPANY_PRESETS = {
     # Major National/Regional Providers
     "Xcel Energy (Colorado)": {
-        "location": "Colorado (Denver, Boulder, Fort Collins)",
+        "location": "Colorado (Denver, Boulder, Fort Collins, Evergreen)",
+        # NOTE: These rates are ESTIMATES and may not match your actual bill.
+        # Xcel rates vary by plan, season, and tier. Verify at:
+        # https://co.my.xcelenergy.com/s/rates-and-regulations
+        # Check your bill for accurate rates and update these values accordingly.
         "rates": [
             {"start_time": "00:00", "end_time": "14:00", "rate_per_kwh": 0.09, "rate_type": "off-peak"},
             {"start_time": "14:00", "end_time": "19:00", "rate_per_kwh": 0.17, "rate_type": "peak"},
