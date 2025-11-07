@@ -131,11 +131,19 @@ async function loadMiners() {
         const response = await fetch(`${API_BASE}/api/miners`);
         const data = await response.json();
 
+        console.log('Miners API response:', data);
+
         if (data.success) {
             displayMiners(data.miners);
+        } else {
+            console.error('API returned success=false:', data);
+            const container = document.getElementById('miners-container');
+            container.innerHTML = '<p class="no-miners">Error loading miners. Check console for details.</p>';
         }
     } catch (error) {
         console.error('Error loading miners:', error);
+        const container = document.getElementById('miners-container');
+        container.innerHTML = '<p class="no-miners">Error loading miners. Check console for details.</p>';
     }
 }
 
@@ -143,26 +151,36 @@ async function loadMiners() {
 function displayMiners(miners) {
     const container = document.getElementById('miners-container');
 
-    if (miners.length === 0) {
+    console.log('displayMiners called with:', miners);
+    console.log('Number of miners:', miners ? miners.length : 'undefined');
+
+    if (!miners || miners.length === 0) {
         container.innerHTML = '<p class="no-miners">No miners found. Click "Discover Miners" to scan your network.</p>';
         return;
     }
 
-    const minersHTML = miners.map(miner => createMinerCard(miner)).join('');
-    container.innerHTML = `<div class="miners-grid">${minersHTML}</div>`;
+    try {
+        const minersHTML = miners.map(miner => createMinerCard(miner)).join('');
+        container.innerHTML = `<div class="miners-grid">${minersHTML}</div>`;
 
-    // Attach event listeners for actions
-    miners.forEach(miner => {
-        const deleteBtn = document.getElementById(`delete-${miner.ip}`);
-        if (deleteBtn) {
-            deleteBtn.addEventListener('click', () => deleteMiner(miner.ip));
-        }
+        // Attach event listeners for actions
+        miners.forEach(miner => {
+            const deleteBtn = document.getElementById(`delete-${miner.ip}`);
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', () => deleteMiner(miner.ip));
+            }
 
-        const restartBtn = document.getElementById(`restart-${miner.ip}`);
-        if (restartBtn) {
-            restartBtn.addEventListener('click', () => restartMiner(miner.ip));
-        }
-    });
+            const restartBtn = document.getElementById(`restart-${miner.ip}`);
+            if (restartBtn) {
+                restartBtn.addEventListener('click', () => restartMiner(miner.ip));
+            }
+        });
+
+        console.log('Successfully displayed', miners.length, 'miners');
+    } catch (error) {
+        console.error('Error in displayMiners:', error);
+        container.innerHTML = '<p class="no-miners">Error displaying miners. Check console for details.</p>';
+    }
 }
 
 // Create HTML for single miner card
