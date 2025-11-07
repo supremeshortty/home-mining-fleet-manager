@@ -1551,8 +1551,11 @@ async function loadSharesMetrics() {
         const rejectRate = totalAttempts > 0 ? ((totalRejected / totalAttempts) * 100).toFixed(2) : 0;
 
         // Update metrics
-        const efficiency = stats.total_power > 0 ? ((stats.total_hashrate / 1e9) / stats.total_power * 1000).toFixed(2) : 0;
-        document.getElementById('fleet-efficiency').textContent = `${efficiency} GH/W`;
+        // Calculate efficiency in TH/W: (hashrate in H/s / 1e12) / power in W * 1000 = TH/W
+        const efficiency = stats.total_power > 0 ? ((stats.total_hashrate / 1e12) / stats.total_power * 1000).toFixed(3) : 0;
+        document.getElementById('fleet-efficiency').textContent = `${efficiency} TH/W`;
+        document.getElementById('total-accepted-shares').textContent = formatNumber(totalShares);
+        document.getElementById('total-rejected-shares').textContent = formatNumber(totalRejected);
         document.getElementById('accept-rate').textContent = `${acceptRate}%`;
         document.getElementById('reject-rate').textContent = `${rejectRate}%`;
         document.getElementById('charts-avg-temp').textContent = `${(stats.avg_temperature ?? 0).toFixed(1)}°C`;
