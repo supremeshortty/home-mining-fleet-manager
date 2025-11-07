@@ -1567,7 +1567,10 @@ async function loadSharesMetrics() {
         sharesChart = new Chart(ctx, {
             type: 'doughnut',
             data: {
-                labels: ['Accepted', 'Rejected'],
+                labels: [
+                    `Accepted: ${formatNumber(totalShares)} (${acceptRate}%)`,
+                    `Rejected: ${formatNumber(totalRejected)} (${rejectRate}%)`
+                ],
                 datasets: [{
                     data: [totalShares, totalRejected],
                     backgroundColor: ['#00d9a3', '#f44336'],
@@ -1582,17 +1585,33 @@ async function loadSharesMetrics() {
                     legend: {
                         labels: {
                             color: '#fff',
-                            font: { size: 14 }
+                            font: { size: 14 },
+                            padding: 12,
+                            generateLabels: function(chart) {
+                                const data = chart.data;
+                                if (data.labels.length && data.datasets.length) {
+                                    return data.labels.map((label, i) => {
+                                        const dataset = data.datasets[0];
+                                        const value = dataset.data[i];
+                                        return {
+                                            text: label,
+                                            fillStyle: dataset.backgroundColor[i],
+                                            hidden: false,
+                                            index: i
+                                        };
+                                    });
+                                }
+                                return [];
+                            }
                         },
                         position: 'bottom'
                     },
                     tooltip: {
                         callbacks: {
                             label: function(context) {
-                                const label = context.label || '';
                                 const value = context.parsed || 0;
                                 const percentage = totalAttempts > 0 ? ((value / totalAttempts) * 100).toFixed(2) : 0;
-                                return `${label}: ${formatNumber(value)} (${percentage}%)`;
+                                return `${formatNumber(value)} shares (${percentage}%)`;
                             }
                         }
                     }
