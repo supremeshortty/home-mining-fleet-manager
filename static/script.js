@@ -698,32 +698,45 @@ async function loadFleetCombinedChart() {
         datasets.push({
             label: 'Total Hashrate',
             data: hashrateData,
-            borderColor: '#4CAF50',
-            backgroundColor: '#4CAF5020',
-            borderWidth: 1.5,
+            borderColor: '#00FF41',
+            backgroundColor: 'rgba(0, 255, 65, 0.1)',
+            borderWidth: 3,
             fill: true,
-            tension: 0.3,
+            tension: 0.4,
             yAxisID: 'y-hashrate',
             order: 1,
-            pointRadius: 0,
-            pointHoverRadius: 4
+            pointRadius: 2,
+            pointHoverRadius: 6,
+            pointBackgroundColor: '#00FF41',
+            borderDash: []
         });
 
-        // Add temperature datasets for each miner (right y-axis)
-        const tempColors = ['#2196F3', '#ff9800', '#f44336', '#9c27b0', '#00bcd4', '#ffeb3b'];
+        // Add temperature datasets for each miner (right y-axis) - more distinct colors
+        const tempColors = [
+            '#FF1744',  // Bright red
+            '#00E5FF',  // Cyan
+            '#FFEA00',  // Yellow
+            '#D500F9',  // Purple
+            '#FF6E40',  // Orange
+            '#76FF03',  // Lime
+            '#18FFFF',  // Aqua
+            '#FF4081'   // Pink
+        ];
         Object.keys(minerTempData).forEach((ip, index) => {
             datasets.push({
                 label: `${ip} Temp`,
                 data: minerTempData[ip],
                 borderColor: tempColors[index % tempColors.length],
                 backgroundColor: 'transparent',
-                borderWidth: 1.5,
+                borderWidth: 3,
                 fill: false,
-                tension: 0.3,
+                tension: 0.4,
                 yAxisID: 'y-temperature',
                 order: 2,
-                pointRadius: 0,
-                pointHoverRadius: 4
+                pointRadius: 2,
+                pointHoverRadius: 6,
+                pointBackgroundColor: tempColors[index % tempColors.length],
+                borderDash: []
             });
         });
 
@@ -897,32 +910,45 @@ async function loadCombinedChart(hours = 24) {
         datasets.push({
             label: 'Total Hashrate',
             data: hashrateData,
-            borderColor: '#4CAF50',
-            backgroundColor: '#4CAF5020',
-            borderWidth: 1.5,
+            borderColor: '#00FF41',
+            backgroundColor: 'rgba(0, 255, 65, 0.1)',
+            borderWidth: 3,
             fill: true,
-            tension: 0.3,
+            tension: 0.4,
             yAxisID: 'y-hashrate',
             order: 1,
-            pointRadius: 0,
-            pointHoverRadius: 4
+            pointRadius: 2,
+            pointHoverRadius: 6,
+            pointBackgroundColor: '#00FF41',
+            borderDash: []
         });
 
-        // Add temperature datasets for each miner (right y-axis)
-        const tempColors = ['#2196F3', '#ff9800', '#f44336', '#9c27b0', '#00bcd4', '#ffeb3b'];
+        // Add temperature datasets for each miner (right y-axis) - more distinct colors
+        const tempColors = [
+            '#FF1744',  // Bright red
+            '#00E5FF',  // Cyan
+            '#FFEA00',  // Yellow
+            '#D500F9',  // Purple
+            '#FF6E40',  // Orange
+            '#76FF03',  // Lime
+            '#18FFFF',  // Aqua
+            '#FF4081'   // Pink
+        ];
         Object.keys(minerTempData).forEach((ip, index) => {
             datasets.push({
                 label: `${ip} Temp`,
                 data: minerTempData[ip],
                 borderColor: tempColors[index % tempColors.length],
                 backgroundColor: 'transparent',
-                borderWidth: 1.5,
+                borderWidth: 3,
                 fill: false,
-                tension: 0.3,
+                tension: 0.4,
                 yAxisID: 'y-temperature',
                 order: 2,
-                pointRadius: 0,
-                pointHoverRadius: 4
+                pointRadius: 2,
+                pointHoverRadius: 6,
+                pointBackgroundColor: tempColors[index % tempColors.length],
+                borderDash: []
             });
         });
 
@@ -1058,13 +1084,14 @@ async function loadPowerChart(hours = 24) {
                 datasets: [{
                     label: 'Total Power (W)',
                     data,
-                    borderColor: '#ff9800',
-                    backgroundColor: '#ff980020',
+                    borderColor: '#FF6E40',
+                    backgroundColor: 'rgba(255, 110, 64, 0.15)',
                     fill: true,
-                    tension: 0.3,
-                    borderWidth: 1.5,
-                    pointRadius: 0,
-                    pointHoverRadius: 4
+                    tension: 0.4,
+                    borderWidth: 3,
+                    pointRadius: 2,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: '#FF6E40'
                 }]
             },
             options: {

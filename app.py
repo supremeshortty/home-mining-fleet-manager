@@ -82,6 +82,8 @@ class FleetManager:
                 miner.custom_name = custom_name
                 with self.lock:
                     self.miners[ip] = miner
+                # Register with thermal manager
+                self.thermal_mgr.register_miner(miner.ip, miner.type)
                 logger.info(f"Loaded miner {ip} ({miner.type})")
 
     def discover_miners(self, subnet: str = None) -> List[Miner]:
