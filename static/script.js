@@ -14,6 +14,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // Discovery button
     document.getElementById('discover-btn').addEventListener('click', discoverMiners);
 
+    // Fleet page time range selectors
+    document.getElementById('shares-timerange').addEventListener('change', loadStats);
+    document.getElementById('power-timerange').addEventListener('change', loadStats);
+    document.getElementById('fleet-chart-timerange').addEventListener('change', () => {
+        const hours = parseInt(document.getElementById('fleet-chart-timerange').value);
+        loadFleetCombinedChart(hours);
+    });
+    document.getElementById('fleet-chart-refresh').addEventListener('click', () => {
+        const hours = parseInt(document.getElementById('fleet-chart-timerange').value);
+        loadFleetCombinedChart(hours);
+    });
+
     // Energy config form
     document.getElementById('energy-config-form').addEventListener('submit', applyEnergyPreset);
 
@@ -654,8 +666,7 @@ function updateLastUpdateTime() {
 // ============================================================================
 
 // Load Fleet Combined Chart (6 hours, compact view for dashboard)
-async function loadFleetCombinedChart() {
-    const hours = 6; // Fixed 6-hour view for fleet page
+async function loadFleetCombinedChart(hours = 6) {
     try {
         // Fetch both temperature and hashrate data in parallel
         const [tempResponse, hashrateResponse] = await Promise.all([
