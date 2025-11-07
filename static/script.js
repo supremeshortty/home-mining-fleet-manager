@@ -1376,9 +1376,9 @@ async function loadPowerChart(hours = 24) {
 }
 
 // Load Profitability Chart
-async function loadProfitabilityChart() {
+async function loadProfitabilityChart(days = 7) {
     try {
-        const response = await fetch(`${API_BASE}/api/energy/profitability/history?days=7`);
+        const response = await fetch(`${API_BASE}/api/energy/profitability/history?days=${days}`);
         const result = await response.json();
 
         if (!result.success) {
@@ -1834,6 +1834,43 @@ async function loadOptimalHours() {
 document.getElementById('refresh-charts-btn')?.addEventListener('click', loadChartsTab);
 document.getElementById('chart-time-range')?.addEventListener('change', loadChartsTab);
 document.getElementById('test-telegram-btn')?.addEventListener('click', testAlert);
+
+// Individual chart controls event listeners
+document.getElementById('combined-chart-refresh')?.addEventListener('click', () => {
+    const hours = parseInt(document.getElementById('combined-chart-timerange').value);
+    loadCombinedChart(hours);
+});
+document.getElementById('combined-chart-timerange')?.addEventListener('change', () => {
+    const hours = parseInt(document.getElementById('combined-chart-timerange').value);
+    loadCombinedChart(hours);
+});
+
+document.getElementById('power-chart-refresh')?.addEventListener('click', () => {
+    const hours = parseInt(document.getElementById('power-chart-timerange').value);
+    loadPowerChart(hours);
+});
+document.getElementById('power-chart-timerange')?.addEventListener('change', () => {
+    const hours = parseInt(document.getElementById('power-chart-timerange').value);
+    loadPowerChart(hours);
+});
+
+document.getElementById('profitability-chart-refresh')?.addEventListener('click', () => {
+    const days = parseInt(document.getElementById('profitability-chart-timerange').value);
+    loadProfitabilityChart(days);
+});
+document.getElementById('profitability-chart-timerange')?.addEventListener('change', () => {
+    const days = parseInt(document.getElementById('profitability-chart-timerange').value);
+    loadProfitabilityChart(days);
+});
+
+document.getElementById('efficiency-chart-refresh')?.addEventListener('click', () => {
+    const hours = parseInt(document.getElementById('efficiency-chart-timerange').value);
+    loadEfficiencyChart(hours);
+});
+document.getElementById('efficiency-chart-timerange')?.addEventListener('change', () => {
+    const hours = parseInt(document.getElementById('efficiency-chart-timerange').value);
+    loadEfficiencyChart(hours);
+});
 
 // Telegram configuration form
 document.getElementById('telegram-alert-form')?.addEventListener('submit', async (e) => {
