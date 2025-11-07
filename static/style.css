@@ -894,6 +894,15 @@ h3 {
     color: var(--danger-color);
 }
 
+.profit-sublabel {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-top: 4px;
+    opacity: 0.8;
+}
+
 /* Alerts */
 .alert-config-section {
     margin-bottom: 32px;
