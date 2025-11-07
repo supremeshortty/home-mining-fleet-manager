@@ -806,6 +806,7 @@ def energy_rates():
         return jsonify({
             'success': True,
             'rates': rates,
+            'schedule': rates,  # Add schedule key for compatibility
             'current_rate': current_rate
         })
 

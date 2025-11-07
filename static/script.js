@@ -918,22 +918,26 @@ async function loadFleetCombinedChart(hours = 6) {
 
         const ctx = document.getElementById('fleet-combined-chart').getContext('2d');
 
-        // Prepare hashrate dataset (single line, total hashrate)
-        const hashrateData = hashrateResult.data.map(point => ({
-            x: new Date(point.timestamp),
-            y: point.hashrate_ths
-        }));
+        // Prepare hashrate dataset (single line, total hashrate) - filter out null/zero values
+        const hashrateData = hashrateResult.data
+            .filter(point => point.hashrate_ths != null && point.hashrate_ths > 0)
+            .map(point => ({
+                x: new Date(point.timestamp),
+                y: point.hashrate_ths
+            }));
 
-        // Group temperature data by miner IP
+        // Group temperature data by miner IP - filter out null/invalid values
         const minerTempData = {};
         tempResult.data.forEach(point => {
-            if (!minerTempData[point.miner_ip]) {
-                minerTempData[point.miner_ip] = [];
+            if (point.temperature != null && point.temperature > 0 && point.temperature < 300) {
+                if (!minerTempData[point.miner_ip]) {
+                    minerTempData[point.miner_ip] = [];
+                }
+                minerTempData[point.miner_ip].push({
+                    x: new Date(point.timestamp),
+                    y: point.temperature
+                });
             }
-            minerTempData[point.miner_ip].push({
-                x: new Date(point.timestamp),
-                y: point.temperature
-            });
         });
 
         // Create datasets
@@ -1130,22 +1134,26 @@ async function loadCombinedChart(hours = 24) {
 
         const ctx = document.getElementById('combined-chart').getContext('2d');
 
-        // Prepare hashrate dataset (single line, total hashrate)
-        const hashrateData = hashrateResult.data.map(point => ({
-            x: new Date(point.timestamp),
-            y: point.hashrate_ths
-        }));
+        // Prepare hashrate dataset (single line, total hashrate) - filter out null/zero values
+        const hashrateData = hashrateResult.data
+            .filter(point => point.hashrate_ths != null && point.hashrate_ths > 0)
+            .map(point => ({
+                x: new Date(point.timestamp),
+                y: point.hashrate_ths
+            }));
 
-        // Group temperature data by miner IP
+        // Group temperature data by miner IP - filter out null/invalid values
         const minerTempData = {};
         tempResult.data.forEach(point => {
-            if (!minerTempData[point.miner_ip]) {
-                minerTempData[point.miner_ip] = [];
+            if (point.temperature != null && point.temperature > 0 && point.temperature < 300) {
+                if (!minerTempData[point.miner_ip]) {
+                    minerTempData[point.miner_ip] = [];
+                }
+                minerTempData[point.miner_ip].push({
+                    x: new Date(point.timestamp),
+                    y: point.temperature
+                });
             }
-            minerTempData[point.miner_ip].push({
-                x: new Date(point.timestamp),
-                y: point.temperature
-            });
         });
 
         // Create datasets
@@ -1312,9 +1320,10 @@ async function loadPowerChart(hours = 24) {
 
         const ctx = document.getElementById('power-chart').getContext('2d');
 
-        // Prepare data
-        const labels = result.data.map(point => new Date(point.timestamp));
-        const data = result.data.map(point => point.power);
+        // Prepare data - filter out null/invalid values
+        const validData = result.data.filter(point => point.power != null && point.power > 0);
+        const labels = validData.map(point => new Date(point.timestamp));
+        const data = validData.map(point => point.power);
 
         // Destroy existing chart
         if (powerChart) {
@@ -1535,16 +1544,24 @@ async function loadEfficiencyChart(hours = 24) {
 }
 
 // Load Shares Metrics
-async function loadSharesMetrics() {
+async function loadSharesMetrics(hours = 24) {
     try {
+        // Get aggregate stats for the time range
+        const aggResponse = await fetch(`${API_BASE}/api/stats/aggregate?hours=${hours}`);
+        const aggResult = await aggResponse.json();
+
+        // Get current stats for other metrics
         const response = await fetch(`${API_BASE}/api/stats`);
         const result = await response.json();
 
-        if (!result.success) return;
+        if (!result.success || !aggResult.success) return;
 
         const stats = result.stats;
-        const totalShares = stats.total_shares || 0;
-        const totalRejected = stats.total_rejected || 0;
+        const aggStats = aggResult.stats;
+
+        // Use aggregated shares data for the pie chart
+        const totalShares = aggStats.total_shares_accepted || 0;
+        const totalRejected = aggStats.total_shares_rejected || 0;
         const totalAttempts = totalShares + totalRejected;
 
         const acceptRate = totalAttempts > 0 ? ((totalShares / totalAttempts) * 100).toFixed(2) : 0;
@@ -1587,9 +1604,16 @@ async function loadSharesMetrics() {
                 plugins: {
                     legend: {
                         labels: {
-                            color: '#fff',
-                            font: { size: 14 },
-                            padding: 12,
+                            color: '#ffffff',
+                            font: {
+                                size: 14,
+                                weight: '600',
+                                family: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+                            },
+                            padding: 15,
+                            usePointStyle: false,
+                            boxWidth: 20,
+                            boxHeight: 20,
                             generateLabels: function(chart) {
                                 const data = chart.data;
                                 if (data.labels.length && data.datasets.length) {
@@ -1599,6 +1623,7 @@ async function loadSharesMetrics() {
                                         return {
                                             text: label,
                                             fillStyle: dataset.backgroundColor[i],
+                                            fontColor: '#ffffff',
                                             hidden: false,
                                             index: i
                                         };
@@ -1892,6 +1917,15 @@ document.getElementById('efficiency-chart-refresh')?.addEventListener('click', (
 document.getElementById('efficiency-chart-timerange')?.addEventListener('change', () => {
     const hours = parseInt(document.getElementById('efficiency-chart-timerange').value);
     loadEfficiencyChart(hours);
+});
+
+document.getElementById('shares-chart-refresh')?.addEventListener('click', () => {
+    const hours = parseInt(document.getElementById('shares-chart-timerange').value);
+    loadSharesMetrics(hours);
+});
+document.getElementById('shares-chart-timerange')?.addEventListener('change', () => {
+    const hours = parseInt(document.getElementById('shares-chart-timerange').value);
+    loadSharesMetrics(hours);
 });
 
 // Telegram configuration form
