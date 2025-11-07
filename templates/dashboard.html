@@ -321,12 +321,14 @@
                             <input type="number" id="max-rate-threshold" step="0.01" value="0.25" min="0">
                         </div>
                         <div class="form-group">
-                            <label for="high-rate-frequency">High Rate Frequency (0 = OFF):</label>
-                            <input type="number" id="high-rate-frequency" value="0" min="0" max="600">
+                            <label for="high-rate-frequency">Chip Frequency During Peak Rates (MHz):</label>
+                            <input type="number" id="high-rate-frequency" value="0" min="0" max="600" placeholder="0 = Turn OFF miners">
+                            <small style="color: var(--text-secondary); display: block; margin-top: 4px;">Set to 0 to turn miners OFF during expensive electricity. Set to a MHz value (e.g., 400) to underclock.</small>
                         </div>
                         <div class="form-group">
-                            <label for="low-rate-frequency">Low Rate Frequency (0 = MAX):</label>
-                            <input type="number" id="low-rate-frequency" value="0" min="0" max="600">
+                            <label for="low-rate-frequency">Chip Frequency During Off-Peak Rates (MHz):</label>
+                            <input type="number" id="low-rate-frequency" value="0" min="0" max="600" placeholder="0 = MAX frequency">
+                            <small style="color: var(--text-secondary); display: block; margin-top: 4px;">Set to 0 to run at MAX frequency during cheap electricity. Set to a MHz value to limit frequency.</small>
                         </div>
                         <button type="submit" class="btn btn-primary">Auto-Create Schedule</button>
                     </form>
