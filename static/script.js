@@ -4,6 +4,7 @@ const UPDATE_INTERVAL = 5000; // 5 seconds
 
 let updateTimer = null;
 let currentTab = 'fleet';
+let minersCache = {}; // Cache for miner data including nicknames
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', () => {
@@ -182,6 +183,16 @@ function displayMiners(miners) {
     }
 
     try {
+        // Update miners cache for charts
+        minersCache = {};
+        miners.forEach(miner => {
+            minersCache[miner.ip] = {
+                custom_name: miner.custom_name,
+                model: miner.model,
+                type: miner.type
+            };
+        });
+
         const minersHTML = miners.map(miner => createMinerCard(miner)).join('');
         container.innerHTML = `<div class="miners-grid">${minersHTML}</div>`;
 
@@ -203,6 +214,14 @@ function displayMiners(miners) {
         console.error('Error in displayMiners:', error);
         container.innerHTML = '<p class="no-miners">Error displaying miners. Check console for details.</p>';
     }
+}
+
+// Helper function to get display name for miner in charts
+function getMinerDisplayName(ip) {
+    if (minersCache[ip] && minersCache[ip].custom_name) {
+        return `${minersCache[ip].custom_name} (${ip})`;
+    }
+    return ip;
 }
 
 // Create HTML for single miner card
@@ -775,7 +794,7 @@ async function loadFleetCombinedChart(hours = 6) {
         ];
         Object.keys(minerTempData).forEach((ip, index) => {
             datasets.push({
-                label: `${ip} Temp`,
+                label: `${getMinerDisplayName(ip)} Temp`,
                 data: minerTempData[ip],
                 borderColor: tempColors[index % tempColors.length],
                 backgroundColor: 'transparent',
@@ -987,7 +1006,7 @@ async function loadCombinedChart(hours = 24) {
         ];
         Object.keys(minerTempData).forEach((ip, index) => {
             datasets.push({
-                label: `${ip} Temp`,
+                label: `${getMinerDisplayName(ip)} Temp`,
                 data: minerTempData[ip],
                 borderColor: tempColors[index % tempColors.length],
                 backgroundColor: 'transparent',
