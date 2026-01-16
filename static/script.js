@@ -1,10 +1,24 @@
 // Mining Fleet Manager Dashboard
 const API_BASE = '';
 const UPDATE_INTERVAL = 5000; // 5 seconds
+const OPTIMIZATION_INTERVAL = 300000; // 5 minutes between frequency adjustments
+const MAX_FREQ_STEP = 25; // Maximum frequency increase per step (MHz)
 
 let updateTimer = null;
 let currentTab = 'fleet';
 let minersCache = {}; // Cache for miner data including nicknames
+
+// ============================================================================
+// AUTO-OPTIMIZATION STATE
+// ============================================================================
+let optimizationState = {
+    // Track which miners are being optimized: { ip: { active, startTime, startFreq, startHashrate, startShares, lastAdjustment, status } }
+    miners: {},
+    // Fleet-wide optimization active
+    fleetOptimizing: false,
+    // Intervals for optimization loops
+    intervals: {}
+};
 
 // ============================================================================
 // CHART COLOR SYSTEM - "Mission Control" Palette
@@ -206,7 +220,7 @@ const CHART_DEFAULTS = {
     responsive: true,
     maintainAspectRatio: false,
     animation: { duration: 300, easing: 'easeOutQuart' },
-    interaction: { mode: 'index', intersect: false },
+    interaction: { mode: 'nearest', intersect: true },
     plugins: {
         legend: {
             labels: {
@@ -507,13 +521,14 @@ function displayMiners(miners) {
     }
 
     try {
-        // Update miners cache for charts
+        // Update miners cache for charts and modal data
         minersCache = {};
         miners.forEach(miner => {
             minersCache[miner.ip] = {
                 custom_name: miner.custom_name,
                 model: miner.model,
-                type: miner.type
+                type: miner.type,
+                last_status: miner.last_status || {}
             };
         });
 
@@ -522,14 +537,31 @@ function displayMiners(miners) {
 
         // Attach event listeners for actions
         miners.forEach(miner => {
+            const card = document.getElementById(`miner-card-${miner.ip.replace(/\./g, '-')}`);
+            if (card) {
+                card.addEventListener('click', (e) => {
+                    // Don't open modal if clicking on action buttons or edit name
+                    if (e.target.closest('.miner-actions') || e.target.closest('.edit-name-btn')) {
+                        return;
+                    }
+                    openMinerDetail(miner.ip);
+                });
+            }
+
             const deleteBtn = document.getElementById(`delete-${miner.ip}`);
             if (deleteBtn) {
-                deleteBtn.addEventListener('click', () => deleteMiner(miner.ip));
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteMiner(miner.ip);
+                });
             }
 
             const restartBtn = document.getElementById(`restart-${miner.ip}`);
             if (restartBtn) {
-                restartBtn.addEventListener('click', () => restartMiner(miner.ip));
+                restartBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    restartMiner(miner.ip);
+                });
             }
         });
 
@@ -540,12 +572,22 @@ function displayMiners(miners) {
     }
 }
 
-// Helper function to get display name for miner in charts
+// Helper function to get display name for miner in charts (no IP addresses)
 function getMinerDisplayName(ip) {
-    if (minersCache[ip] && minersCache[ip].custom_name) {
-        return `${minersCache[ip].custom_name} (${ip})`;
+    if (minersCache[ip]) {
+        // Prefer custom name, then model, then type
+        if (minersCache[ip].custom_name) {
+            return minersCache[ip].custom_name;
+        }
+        if (minersCache[ip].model) {
+            return minersCache[ip].model;
+        }
+        if (minersCache[ip].type) {
+            return minersCache[ip].type;
+        }
     }
-    return ip;
+    // Fallback to a generic name (avoid showing IP)
+    return 'Miner';
 }
 
 // Create HTML for single miner card
@@ -562,7 +604,7 @@ function createMinerCard(miner) {
     const isCustomName = !!miner.custom_name;
 
     return `
-        <div class="miner-card ${offlineClass}">
+        <div class="miner-card ${offlineClass}" id="miner-card-${miner.ip.replace(/\./g, '-')}" data-ip="${miner.ip}">
             <div class="miner-header">
                 <div class="miner-title" id="miner-title-${miner.ip.replace(/\./g, '-')}" data-ip="${miner.ip}">
                     <span class="miner-name">${displayName}</span>
@@ -1270,14 +1312,58 @@ async function loadFleetCombinedChart(hours = 6) {
             minerHashrateData[ip].sort((a, b) => a.x - b.x);
         });
 
-        // Calculate adaptive hashrate axis based on individual miner max
-        let maxHashrate = 0;
-        Object.values(minerHashrateData).forEach(data => {
-            if (data.length > 0) {
-                const minerMax = Math.max(...data.map(d => d.y));
-                if (minerMax > maxHashrate) maxHashrate = minerMax;
+        // Calculate total hashrate by aggregating all miners at each time bucket
+        // Round timestamps to nearest 5 minutes so data from different miners aligns
+        const BUCKET_SIZE = 5 * 60 * 1000; // 5 minutes in milliseconds
+        const totalHashrateByTime = {};
+
+        Object.values(minerHashrateData).forEach(minerData => {
+            minerData.forEach(point => {
+                // Round to nearest 5-minute bucket
+                const bucketTime = Math.round(point.x.getTime() / BUCKET_SIZE) * BUCKET_SIZE;
+                if (!totalHashrateByTime[bucketTime]) {
+                    totalHashrateByTime[bucketTime] = { sum: 0, count: 0, miners: new Set() };
+                }
+                // Only count each miner once per bucket (use latest value)
+                const minerId = point.minerId || 'unknown';
+                if (!totalHashrateByTime[bucketTime].miners.has(minerId)) {
+                    totalHashrateByTime[bucketTime].sum += point.y;
+                    totalHashrateByTime[bucketTime].miners.add(minerId);
+                }
+            });
+        });
+
+        // Also track miner IPs for proper aggregation
+        Object.entries(minerHashrateData).forEach(([ip, minerData]) => {
+            minerData.forEach(point => {
+                const bucketTime = Math.round(point.x.getTime() / BUCKET_SIZE) * BUCKET_SIZE;
+                if (totalHashrateByTime[bucketTime]) {
+                    // Re-aggregate properly by miner IP
+                    if (!totalHashrateByTime[bucketTime].byMiner) {
+                        totalHashrateByTime[bucketTime].byMiner = {};
+                    }
+                    totalHashrateByTime[bucketTime].byMiner[ip] = point.y;
+                }
+            });
+        });
+
+        // Recalculate totals from byMiner data
+        Object.values(totalHashrateByTime).forEach(bucket => {
+            if (bucket.byMiner) {
+                bucket.sum = Object.values(bucket.byMiner).reduce((a, b) => a + b, 0);
             }
         });
+
+        // Convert total to array and sort by time
+        const totalHashrateData = Object.entries(totalHashrateByTime)
+            .map(([time, bucket]) => ({ x: new Date(parseInt(time)), y: bucket.sum }))
+            .sort((a, b) => a.x - b.x);
+
+        // Calculate adaptive hashrate axis based on TOTAL hashrate
+        let maxHashrate = 0;
+        if (totalHashrateData.length > 0) {
+            maxHashrate = Math.max(...totalHashrateData.map(d => d.y));
+        }
         if (maxHashrate === 0) maxHashrate = 10;
         const hashrateAxisMax = getAdaptiveAxisMax(maxHashrate);
         const unitInfo = getHashrateUnitInfo(hashrateAxisMax);
@@ -1304,8 +1390,29 @@ async function loadFleetCombinedChart(hours = 6) {
         // Get unique miner IPs from both datasets
         const minerIPs = [...new Set([...Object.keys(minerHashrateData), ...Object.keys(minerTempData)])];
 
-        // Create datasets - AxeOS style: per-miner hashrate + per-miner temp
+        // Create datasets
         const datasets = [];
+
+        // Add TOTAL hashrate line first (prominent, thicker white line)
+        if (totalHashrateData.length > 0) {
+            datasets.push({
+                label: 'Total Hashrate',
+                data: totalHashrateData,
+                borderColor: '#ffffff',
+                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.3,
+                yAxisID: 'y-hashrate',
+                order: 0,
+                pointRadius: 0,
+                pointHoverRadius: 6,
+                pointBackgroundColor: '#ffffff',
+                pointBorderColor: '#000',
+                pointBorderWidth: 2,
+                metricType: 'hashrate'
+            });
+        }
 
         // Add per-miner hashrate datasets (left y-axis) - COOL colors, solid lines
         minerIPs.forEach((ip, index) => {
@@ -1314,7 +1421,7 @@ async function loadFleetCombinedChart(hours = 6) {
 
             if (minerHashrateData[ip] && minerHashrateData[ip].length > 0) {
                 datasets.push({
-                    label: `${displayName}`,
+                    label: displayName,
                     data: minerHashrateData[ip],
                     borderColor: color,
                     backgroundColor: color + '15',
@@ -1340,7 +1447,7 @@ async function loadFleetCombinedChart(hours = 6) {
 
             if (minerTempData[ip] && minerTempData[ip].length > 0) {
                 datasets.push({
-                    label: `${displayName}`,
+                    label: `${displayName} Temp`,
                     data: minerTempData[ip],
                     borderColor: color,
                     backgroundColor: 'transparent',
@@ -1365,7 +1472,7 @@ async function loadFleetCombinedChart(hours = 6) {
             fleetCombinedChart.destroy();
         }
 
-        // Create new dual-axis chart
+        // Create new chart
         fleetCombinedChart = new Chart(ctx, {
             type: 'line',
             data: { datasets },
@@ -1374,23 +1481,35 @@ async function loadFleetCombinedChart(hours = 6) {
                 maintainAspectRatio: false,
                 animation: false,
                 interaction: {
-                    mode: 'index',
-                    intersect: false
+                    mode: 'nearest',
+                    intersect: true
                 },
                 plugins: {
                     legend: {
+                        display: true,
+                        position: 'bottom',
                         labels: {
                             color: CHART_COLORS.text,
                             usePointStyle: true,
-                            padding: 12,
-                            font: { family: "'Outfit', sans-serif", size: 11, weight: '600' },
-                            generateLabels: generateGroupedLegendLabels
-                        },
-                        onClick: handleGroupedLegendClick
+                            pointStyle: 'line',
+                            padding: 16,
+                            font: { family: "'Outfit', sans-serif", size: 11, weight: '500' },
+                            filter: function(item) {
+                                // Only show hashrate datasets in legend (not temperature)
+                                return item.text && !item.text.includes('Temp');
+                            }
+                        }
                     },
                     tooltip: {
                         ...CHART_DEFAULTS.plugins.tooltip,
                         callbacks: {
+                            title: function(context) {
+                                // Show timestamp
+                                if (context[0] && context[0].parsed.x) {
+                                    return new Date(context[0].parsed.x).toLocaleString();
+                                }
+                                return '';
+                            },
                             label: function(context) {
                                 let label = context.dataset.label || '';
                                 if (label) {
@@ -1646,23 +1765,23 @@ async function loadCombinedChart(hours = 24) {
                 maintainAspectRatio: false,
                 animation: false,
                 interaction: {
-                    mode: 'index',
-                    intersect: false
+                    mode: 'nearest',
+                    intersect: true
                 },
                 plugins: {
                     legend: {
-                        labels: {
-                            color: CHART_COLORS.text,
-                            usePointStyle: true,
-                            padding: 12,
-                            font: { family: "'Outfit', sans-serif", size: 11, weight: '600' },
-                            generateLabels: generateGroupedLegendLabels
-                        },
-                        onClick: handleGroupedLegendClick
+                        display: false  // Hide legend - names shown on hover only
                     },
                     tooltip: {
                         ...CHART_DEFAULTS.plugins.tooltip,
                         callbacks: {
+                            title: function(context) {
+                                // Show timestamp
+                                if (context[0] && context[0].parsed.x) {
+                                    return new Date(context[0].parsed.x).toLocaleString();
+                                }
+                                return '';
+                            },
                             label: function(context) {
                                 let label = context.dataset.label || '';
                                 if (label) {
@@ -2639,4 +2758,1336 @@ async function savePoolConfig(ip) {
     } catch (error) {
         showAlert(`❌ Error saving pool config: ${error.message}`, 'error');
     }
+}
+
+// ============================================================================
+// MINER DETAIL MODAL
+// ============================================================================
+
+let currentMinerIP = null;
+let minerDetailUpdateInterval = null;
+
+// Open the miner detail modal
+function openMinerDetail(ip) {
+    currentMinerIP = ip;
+    const modal = document.getElementById('miner-detail-modal');
+    if (!modal) return;
+
+    // Reset to overview tab
+    switchMinerTab('overview');
+
+    // Reset voltage controls (require acknowledgment each time)
+    resetVoltageControls();
+
+    // Populate the modal with miner data
+    populateMinerDetail(ip);
+
+    // Show the modal
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+
+    // Start auto-refresh for live data
+    minerDetailUpdateInterval = setInterval(() => {
+        if (currentMinerIP) {
+            refreshMinerDetailData(currentMinerIP);
+        }
+    }, 5000);
+
+    // Close on escape key
+    document.addEventListener('keydown', handleModalEscape);
+
+    // Close on overlay click
+    modal.addEventListener('click', handleOverlayClick);
+}
+
+// Close the miner detail modal
+function closeMinerDetail() {
+    const modal = document.getElementById('miner-detail-modal');
+    if (!modal) return;
+
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+    currentMinerIP = null;
+
+    // Stop auto-refresh
+    if (minerDetailUpdateInterval) {
+        clearInterval(minerDetailUpdateInterval);
+        minerDetailUpdateInterval = null;
+    }
+
+    // Remove event listeners
+    document.removeEventListener('keydown', handleModalEscape);
+    modal.removeEventListener('click', handleOverlayClick);
+}
+
+function handleModalEscape(e) {
+    if (e.key === 'Escape') {
+        closeMinerDetail();
+    }
+}
+
+function handleOverlayClick(e) {
+    if (e.target.classList.contains('modal-overlay')) {
+        closeMinerDetail();
+    }
+}
+
+// Populate the modal with miner data
+function populateMinerDetail(ip) {
+    const miner = minersCache[ip];
+    if (!miner) {
+        console.error('Miner not found in cache:', ip);
+        return;
+    }
+
+    const status = miner.last_status || miner;
+    const isOnline = status.status === 'online';
+
+    // Header info
+    document.getElementById('modal-miner-name').textContent = miner.custom_name || miner.model || 'Unknown Miner';
+    document.getElementById('modal-miner-type').textContent = miner.model || miner.type || 'Bitcoin Miner';
+    document.getElementById('modal-miner-ip').textContent = ip;
+
+    // Status avatar
+    const avatarEl = document.getElementById('modal-miner-status');
+    if (isOnline) {
+        avatarEl.classList.remove('offline');
+    } else {
+        avatarEl.classList.add('offline');
+    }
+
+    // Hashrate - extract numeric value for display
+    const hashrate = status.hashrate || 0;
+    const hashrateFormatted = formatHashrateForModal(hashrate);
+    document.getElementById('modal-hashrate').textContent = hashrateFormatted.value;
+
+    // Temperature
+    const temp = status.temperature || 0;
+    document.getElementById('modal-temp').textContent = `${temp.toFixed(1)}°C`;
+
+    // Power
+    const power = status.power || 0;
+    document.getElementById('modal-power').textContent = `${power.toFixed(1)} W`;
+
+    // Efficiency
+    const hashrateThs = hashrate / 1e12;
+    const efficiency = hashrateThs > 0 ? (power / hashrateThs).toFixed(1) : '0';
+    document.getElementById('modal-efficiency').textContent = efficiency;
+
+    // Shares
+    document.getElementById('modal-shares').textContent = formatNumber(status.shares_accepted || 0);
+
+    // Fan speed
+    const fanSpeed = status.fan_speed || status.raw?.fanSpeedPercent || 0;
+    document.getElementById('modal-fan-percent').textContent = `${fanSpeed}%`;
+
+    // Uptime
+    const uptime = status.uptime || status.raw?.uptimeSeconds || 0;
+    document.getElementById('modal-uptime').textContent = formatUptime(uptime);
+
+    // Pool status bar
+    const poolStatus = status.pool_status || (isOnline ? 'Alive' : 'Dead');
+    const poolBar = document.querySelector('.pool-bar');
+    const poolText = document.querySelector('.pool-text');
+    if (poolStatus.toLowerCase() === 'alive' && isOnline) {
+        poolBar?.classList.remove('offline');
+        if (poolText) poolText.textContent = 'Pool Connected';
+    } else {
+        poolBar?.classList.add('offline');
+        if (poolText) poolText.textContent = 'Pool Disconnected';
+    }
+
+    // Pool URL
+    const poolUrl = status.pool_url || status.raw?.stratumURL || 'Not configured';
+    const poolUrlEl = document.getElementById('modal-pool-url');
+    if (poolUrlEl) poolUrlEl.textContent = poolUrl;
+
+    // --- Performance Tab ---
+    // Best difficulty
+    document.getElementById('modal-best-diff').textContent = formatDifficulty(status.best_difficulty || 0);
+    document.getElementById('modal-session-diff').textContent = formatDifficulty(status.session_difficulty || status.best_difficulty || 0);
+
+    // Live readings
+    document.getElementById('modal-perf-hashrate').textContent = formatHashrate(hashrate);
+    document.getElementById('modal-perf-temp').textContent = `${temp.toFixed(1)}°C`;
+
+    const vrTemp = status.vr_temp || status.raw?.vrTemp || '--';
+    document.getElementById('modal-vr-temp').textContent = typeof vrTemp === 'number' ? `${vrTemp}°C` : `${vrTemp}°C`;
+
+    document.getElementById('modal-perf-power').textContent = `${power.toFixed(1)} W`;
+
+    const voltage = status.raw?.voltage || 5;
+    const amps = power / voltage;
+    document.getElementById('modal-perf-current').textContent = `${amps.toFixed(2)} A`;
+
+    const kwhDay = (power / 1000) * 24;
+    document.getElementById('modal-kwh-day').textContent = `${kwhDay.toFixed(2)} kWh`;
+
+    const fanRpm = status.fan_rpm || status.raw?.fanrpm || 0;
+    document.getElementById('modal-fan-rpm').textContent = formatNumber(fanRpm);
+
+    const wifiSignal = status.wifi_rssi || status.raw?.wifiRSSI || -65;
+    document.getElementById('modal-wifi-signal').textContent = `${wifiSignal} dBm`;
+
+    // Share stats
+    document.getElementById('modal-pool-shares').textContent = formatNumber(status.shares_accepted || 0);
+    document.getElementById('modal-rejected-shares').textContent = formatNumber(status.shares_rejected || 0);
+
+    // Share bar width
+    const totalShares = (status.shares_accepted || 0) + (status.shares_rejected || 0);
+    const acceptRate = totalShares > 0 ? (status.shares_accepted / totalShares) * 100 : 100;
+    const shareBarEl = document.getElementById('share-bar-accepted');
+    if (shareBarEl) shareBarEl.style.width = `${acceptRate}%`;
+
+    // --- Tuning Tab ---
+    const frequency = status.raw?.frequency || status.frequency || 525;
+    const coreVoltage = status.raw?.coreVoltage || status.core_voltage || 1150;
+    const voltageInMv = Math.round(coreVoltage * (coreVoltage < 100 ? 1000 : 1));
+
+    document.getElementById('modal-frequency').textContent = `${frequency} MHz`;
+    document.getElementById('modal-voltage').textContent = `${voltageInMv} mV`;
+
+    // Set voltage input to current value
+    const voltageInput = document.getElementById('voltage-input');
+    if (voltageInput) {
+        voltageInput.value = voltageInMv;
+        updateVoltageWarning(voltageInMv);
+    }
+
+    // Update OC profile UI for this miner type
+    updateOCProfileUI();
+
+    // Update auto-optimization UI
+    updateMinerOptimizeUI();
+
+    // Footer status
+    const footerStatus = document.getElementById('modal-uptime-status');
+    if (footerStatus) {
+        footerStatus.textContent = isOnline ? (uptime > 86400 ? 'Rock solid' : 'Running') : 'Offline';
+        footerStatus.style.color = isOnline ? 'var(--success)' : 'var(--danger)';
+    }
+}
+
+// Format hashrate for modal display (returns value and unit separately)
+function formatHashrateForModal(hashrate) {
+    if (!hashrate) return { value: '0', unit: 'H/s' };
+
+    const units = ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s'];
+    let value = hashrate;
+    let unitIndex = 0;
+
+    while (value >= 1000 && unitIndex < units.length - 1) {
+        value /= 1000;
+        unitIndex++;
+    }
+
+    return { value: value.toFixed(2), unit: units[unitIndex] };
+}
+
+// Switch between miner detail tabs
+function switchMinerTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.miner-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    document.querySelector(`.miner-tab[data-tab="${tabName}"]`)?.classList.add('active');
+
+    // Update tab panes
+    document.querySelectorAll('.miner-tab-pane').forEach(pane => {
+        pane.classList.remove('active');
+    });
+    document.getElementById(`tab-${tabName}`)?.classList.add('active');
+}
+
+// Format uptime to human readable
+function formatUptime(seconds) {
+    if (!seconds || seconds === 0) return '0h';
+
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+
+    if (days > 0) {
+        return `${days}d ${hours}h`;
+    } else if (hours > 0) {
+        return `${hours}h ${minutes}m`;
+    } else {
+        return `${minutes}m`;
+    }
+}
+
+// Refresh miner detail data
+async function refreshMinerDetailData(ip) {
+    try {
+        const response = await fetch(`${API_BASE}/api/miners`);
+        const miners = await response.json();
+
+        const miner = miners.find(m => m.ip === ip);
+        if (miner) {
+            // Update cache
+            minersCache[ip] = {
+                ...minersCache[ip],
+                last_status: miner.last_status || miner
+            };
+            // Refresh display
+            populateMinerDetail(ip);
+        }
+    } catch (error) {
+        console.error('Error refreshing miner detail:', error);
+    }
+}
+
+// Toggle expandable sections
+function toggleSection(sectionId) {
+    const section = document.getElementById(sectionId);
+    if (section) {
+        section.classList.toggle('expanded');
+    }
+}
+
+// Restart miner from modal
+function restartMinerFromModal() {
+    if (currentMinerIP) {
+        restartMiner(currentMinerIP);
+    }
+}
+
+// Open miner's web UI
+function openMinerWebUI() {
+    if (currentMinerIP) {
+        window.open(`http://${currentMinerIP}`, '_blank');
+    }
+}
+
+// Miner-specific OC profiles with safe ranges and auto-optimization targets
+// Research sources: D-Central, Solo Satoshi, AxeForge, Power Mining, GitHub repos
+// Temperature targets based on: https://d-central.tech/the-complete-bitaxe-overclocking-guide-from-1-2-th-s-to-2-th-s/
+const MINER_OC_PROFILES = {
+    // BitAxe Ultra (BM1366) - S19XP chip
+    // Stock: 485MHz/1200mV = ~425-500 GH/s, OC to 550+ GH/s
+    'BitAxe Ultra': {
+        chip: 'BM1366',
+        hashrate: { stock: '500 GH/s', max: '650 GH/s' },
+        voltage: { min: 1100, max: 1350, safe: { min: 1150, max: 1250 }, danger: 1300, stock: 1200 },
+        frequency: { min: 400, max: 700, stock: 485, mild: 525, med: 575, heavy: 625 },
+        power: { stock: 12, max: 25 },
+        // Temperature targets for auto-optimization
+        temp: { optimal: 55, efficiency: { min: 45, max: 55 }, safeMax: 65, throttle: 70, shutdown: 80 }
+    },
+    // BitAxe Supra (BM1368) - S21 chip, 17.5 J/TH efficiency
+    'BitAxe Supra': {
+        chip: 'BM1368',
+        hashrate: { stock: '580 GH/s', max: '900 GH/s' },
+        voltage: { min: 1100, max: 1400, safe: { min: 1150, max: 1300 }, danger: 1350, stock: 1200 },
+        frequency: { min: 400, max: 800, stock: 490, mild: 550, med: 600, heavy: 700 },
+        power: { stock: 15, max: 30 },
+        temp: { optimal: 55, efficiency: { min: 45, max: 55 }, safeMax: 65, throttle: 70, shutdown: 80 }
+    },
+    // BitAxe Gamma (BM1370) - S21 Pro chip, most efficient (15 J/TH)
+    'BitAxe Gamma': {
+        chip: 'BM1370',
+        hashrate: { stock: '1.2 TH/s', max: '2.0 TH/s' },
+        voltage: { min: 1050, max: 1350, safe: { min: 1100, max: 1200 }, danger: 1250, stock: 1150 },
+        frequency: { min: 400, max: 900, stock: 525, mild: 600, med: 700, heavy: 800 },
+        power: { stock: 15, max: 35 },
+        temp: { optimal: 55, efficiency: { min: 45, max: 55 }, safeMax: 65, throttle: 70, shutdown: 80 }
+    },
+    // BitAxe Hex (6x BM1366) - Multi-chip version
+    'BitAxe Hex': {
+        chip: '6x BM1366',
+        hashrate: { stock: '3.0 TH/s', max: '4.0 TH/s' },
+        voltage: { min: 1100, max: 1300, safe: { min: 1150, max: 1250 }, danger: 1280, stock: 1200 },
+        frequency: { min: 400, max: 650, stock: 485, mild: 525, med: 550, heavy: 600 },
+        power: { stock: 50, max: 80 },
+        temp: { optimal: 55, efficiency: { min: 45, max: 55 }, safeMax: 65, throttle: 70, shutdown: 80 }
+    },
+    // NerdAxe (single BM1366) - Similar to BitAxe Ultra
+    'NerdAxe': {
+        chip: 'BM1366',
+        hashrate: { stock: '500 GH/s', max: '650 GH/s' },
+        voltage: { min: 1100, max: 1350, safe: { min: 1150, max: 1250 }, danger: 1300, stock: 1200 },
+        frequency: { min: 400, max: 700, stock: 485, mild: 525, med: 575, heavy: 625 },
+        power: { stock: 12, max: 25 },
+        temp: { optimal: 55, efficiency: { min: 45, max: 55 }, safeMax: 65, throttle: 70, shutdown: 80 }
+    },
+    // NerdQAxe++ (4x BM1366) - Quad chip
+    // 8A fuse limits to ~700MHz
+    'NerdQAxe++': {
+        chip: '4x BM1366',
+        hashrate: { stock: '4.8 TH/s', max: '6.5 TH/s' },
+        voltage: { min: 1100, max: 1300, safe: { min: 1150, max: 1250 }, danger: 1280, stock: 1200 },
+        frequency: { min: 400, max: 750, stock: 490, mild: 550, med: 600, heavy: 675 },
+        power: { stock: 72, max: 115 },
+        temp: { optimal: 58, efficiency: { min: 50, max: 60 }, safeMax: 70, throttle: 75, shutdown: 85 }
+    },
+    // NerdOctaxe Gamma (8x BM1370) - Octa chip, most powerful Nerd
+    'NerdOctaxe': {
+        chip: '8x BM1370',
+        hashrate: { stock: '9.6 TH/s', max: '10.6 TH/s' },
+        voltage: { min: 1100, max: 1300, safe: { min: 1150, max: 1200 }, danger: 1250, stock: 1150 },
+        frequency: { min: 500, max: 750, stock: 600, mild: 625, med: 650, heavy: 700 },
+        power: { stock: 178, max: 200 },
+        temp: { optimal: 55, efficiency: { min: 45, max: 55 }, safeMax: 65, throttle: 70, shutdown: 80 }
+    },
+    // Antminer S9 - Legacy miner (BM1387) - runs hotter
+    'Antminer S9': {
+        chip: 'BM1387',
+        hashrate: { stock: '13.5 TH/s', max: '14.5 TH/s' },
+        voltage: { min: 800, max: 950, safe: { min: 840, max: 900 }, danger: 920, stock: 860 },
+        frequency: { min: 550, max: 700, stock: 650, mild: 662, med: 675, heavy: 700 },
+        power: { stock: 1350, max: 1500 },
+        temp: { optimal: 70, efficiency: { min: 60, max: 75 }, safeMax: 80, throttle: 85, shutdown: 95 }
+    },
+    // Antminer S19 - Modern miner (BM1362)
+    'Antminer S19': {
+        chip: 'BM1362',
+        hashrate: { stock: '95 TH/s', max: '110 TH/s' },
+        voltage: { min: 1100, max: 1400, safe: { min: 1200, max: 1350 }, danger: 1380, stock: 1300 },
+        frequency: { min: 400, max: 600, stock: 500, mild: 525, med: 550, heavy: 575 },
+        power: { stock: 3250, max: 3800 },
+        temp: { optimal: 60, efficiency: { min: 50, max: 65 }, safeMax: 75, throttle: 80, shutdown: 90 }
+    },
+    // Whatsminer M30S
+    'Whatsminer M30S': {
+        chip: 'Custom ASIC',
+        hashrate: { stock: '86 TH/s', max: '100 TH/s' },
+        voltage: { min: 1100, max: 1400, safe: { min: 1200, max: 1350 }, danger: 1380, stock: 1300 },
+        frequency: { min: 400, max: 600, stock: 480, mild: 510, med: 540, heavy: 580 },
+        power: { stock: 3344, max: 4000 },
+        temp: { optimal: 60, efficiency: { min: 50, max: 65 }, safeMax: 75, throttle: 80, shutdown: 90 }
+    },
+    // Default fallback for unknown miners
+    'default': {
+        chip: 'Unknown',
+        hashrate: { stock: 'N/A', max: 'N/A' },
+        voltage: { min: 1000, max: 1400, safe: { min: 1100, max: 1250 }, danger: 1300, stock: 1150 },
+        frequency: { min: 400, max: 700, stock: 500, mild: 550, med: 600, heavy: 650 },
+        power: { stock: 15, max: 50 },
+        temp: { optimal: 55, efficiency: { min: 45, max: 60 }, safeMax: 65, throttle: 70, shutdown: 80 }
+    }
+};
+
+// ============================================================================
+// AUTO-OPTIMIZATION ALGORITHM
+// ============================================================================
+
+// Get OC profile for a specific miner IP (not just currentMinerIP)
+function getMinerOCProfileByIP(ip) {
+    if (!ip || !minersCache[ip]) {
+        return MINER_OC_PROFILES['default'];
+    }
+
+    const miner = minersCache[ip];
+    const model = (miner.model || miner.type || '').toLowerCase();
+
+    for (const [key, profile] of Object.entries(MINER_OC_PROFILES)) {
+        if (key !== 'default' && model.includes(key.toLowerCase())) {
+            return profile;
+        }
+    }
+
+    // Chip-based matching
+    if (model.includes('bm1370') || model.includes('gamma')) return MINER_OC_PROFILES['BitAxe Gamma'];
+    if (model.includes('bm1368') || model.includes('supra')) return MINER_OC_PROFILES['BitAxe Supra'];
+    if (model.includes('bm1366') || model.includes('ultra')) return MINER_OC_PROFILES['BitAxe Ultra'];
+    if (model.includes('nerdqaxe') || model.includes('qaxe')) return MINER_OC_PROFILES['NerdQAxe++'];
+    if (model.includes('nerdoctaxe') || model.includes('octaxe')) return MINER_OC_PROFILES['NerdOctaxe'];
+    if (model.includes('nerdaxe') || model.includes('nerd')) return MINER_OC_PROFILES['NerdAxe'];
+    if (model.includes('hex')) return MINER_OC_PROFILES['BitAxe Hex'];
+    if (model.includes('bitaxe') || model.includes('axe')) return MINER_OC_PROFILES['BitAxe Ultra'];
+
+    return MINER_OC_PROFILES['default'];
+}
+
+// Toggle fleet-wide auto optimization
+async function toggleFleetAutoOptimize() {
+    const btn = document.getElementById('auto-optimize-fleet-btn');
+    const btnText = document.getElementById('auto-optimize-fleet-text');
+
+    if (optimizationState.fleetOptimizing) {
+        // Stop all optimizations
+        stopAllOptimizations();
+        btn.classList.remove('optimizing');
+        btnText.textContent = 'Auto Optimize Fleet';
+        showAlert('Fleet optimization stopped.', 'success');
+    } else {
+        // Start optimizing all miners
+        const minerIPs = Object.keys(minersCache);
+        if (minerIPs.length === 0) {
+            showAlert('No miners found. Discover miners first.', 'error');
+            return;
+        }
+
+        const confirmed = confirm(
+            `Start auto-optimization for ${minerIPs.length} miner(s)?\n\n` +
+            `This will gradually increase frequency to reach optimal temperature.\n` +
+            `Fan will be set to auto. Frequency increases max +${MAX_FREQ_STEP} MHz every 5 minutes.\n\n` +
+            `You can stop optimization at any time.`
+        );
+        if (!confirmed) return;
+
+        optimizationState.fleetOptimizing = true;
+        btn.classList.add('optimizing');
+        btnText.textContent = 'Stop Optimization';
+
+        // Start optimization for each miner
+        for (const ip of minerIPs) {
+            startMinerOptimization(ip);
+        }
+
+        showAlert(`Fleet optimization started for ${minerIPs.length} miner(s).`, 'success');
+    }
+}
+
+// Toggle single miner auto optimization (from modal)
+function toggleMinerAutoOptimize() {
+    if (!currentMinerIP) return;
+
+    const state = optimizationState.miners[currentMinerIP];
+
+    if (state && state.active) {
+        stopMinerOptimization(currentMinerIP);
+        showAlert('Optimization stopped for this miner.', 'success');
+    } else {
+        const profile = getMinerOCProfileByIP(currentMinerIP);
+        const miner = minersCache[currentMinerIP];
+        const minerName = miner?.custom_name || miner?.model || currentMinerIP;
+
+        const confirmed = confirm(
+            `Start auto-optimization for ${minerName}?\n\n` +
+            `Target temperature: ${profile.temp.optimal}°C\n` +
+            `Frequency will increase by max +${MAX_FREQ_STEP} MHz every 5 minutes.\n\n` +
+            `Optimization will stop when temperature reaches optimal range.`
+        );
+        if (!confirmed) return;
+
+        startMinerOptimization(currentMinerIP);
+        showAlert(`Optimization started for ${minerName}.`, 'success');
+    }
+
+    updateMinerOptimizeUI();
+}
+
+// Start optimization for a single miner
+async function startMinerOptimization(ip) {
+    const miner = minersCache[ip];
+    if (!miner) return;
+
+    const status = miner.last_status || {};
+    const profile = getMinerOCProfileByIP(ip);
+
+    // Initialize optimization state for this miner
+    optimizationState.miners[ip] = {
+        active: true,
+        startTime: Date.now(),
+        startFreq: status.raw?.frequency || status.frequency || profile.frequency.stock,
+        startHashrate: status.hashrate || 0,
+        startShares: status.shares_accepted || 0,
+        startEfficiency: calculateEfficiency(status.hashrate, status.power),
+        lastAdjustment: Date.now(),
+        adjustmentCount: 0,
+        status: 'starting'
+    };
+
+    // Add optimizing class to miner card
+    const cardId = `miner-card-${ip.replace(/\./g, '-')}`;
+    const card = document.getElementById(cardId);
+    if (card) {
+        card.classList.add('optimizing');
+        card.classList.remove('optimized');
+    }
+
+    // Run first optimization check immediately
+    await runOptimizationCycle(ip);
+
+    // Set up interval for ongoing optimization (check every 30 seconds, adjust every 5 min)
+    optimizationState.intervals[ip] = setInterval(() => {
+        runOptimizationCycle(ip);
+    }, 30000); // Check every 30 seconds
+}
+
+// Stop optimization for a single miner
+function stopMinerOptimization(ip) {
+    if (optimizationState.intervals[ip]) {
+        clearInterval(optimizationState.intervals[ip]);
+        delete optimizationState.intervals[ip];
+    }
+
+    if (optimizationState.miners[ip]) {
+        const wasActive = optimizationState.miners[ip].active;
+        optimizationState.miners[ip].active = false;
+        optimizationState.miners[ip].status = wasActive ? 'stopped' : 'idle';
+    }
+
+    // Update miner card class
+    const cardId = `miner-card-${ip.replace(/\./g, '-')}`;
+    const card = document.getElementById(cardId);
+    if (card) {
+        card.classList.remove('optimizing');
+        // Check if optimization achieved good results
+        if (optimizationState.miners[ip]?.status === 'optimal') {
+            card.classList.add('optimized');
+        }
+    }
+
+    // Check if any miners are still optimizing
+    const anyActive = Object.values(optimizationState.miners).some(m => m.active);
+    if (!anyActive) {
+        optimizationState.fleetOptimizing = false;
+        const btn = document.getElementById('auto-optimize-fleet-btn');
+        const btnText = document.getElementById('auto-optimize-fleet-text');
+        if (btn) btn.classList.remove('optimizing');
+        if (btnText) btnText.textContent = 'Auto Optimize Fleet';
+    }
+}
+
+// Stop all optimizations
+function stopAllOptimizations() {
+    for (const ip of Object.keys(optimizationState.miners)) {
+        stopMinerOptimization(ip);
+    }
+    optimizationState.fleetOptimizing = false;
+}
+
+// Main optimization cycle - runs every 30 seconds for each optimizing miner
+async function runOptimizationCycle(ip) {
+    const state = optimizationState.miners[ip];
+    if (!state || !state.active) return;
+
+    const miner = minersCache[ip];
+    if (!miner) {
+        stopMinerOptimization(ip);
+        return;
+    }
+
+    // Fetch fresh data for this miner
+    try {
+        const response = await fetch(`${API_BASE}/api/miners`);
+        const data = await response.json();
+        const freshMiner = data.miners?.find(m => m.ip === ip);
+
+        if (!freshMiner) {
+            state.status = 'offline';
+            updateMinerOptimizeUI();
+            return;
+        }
+
+        // Update cache with fresh data
+        minersCache[ip] = {
+            ...minersCache[ip],
+            last_status: freshMiner.last_status || freshMiner
+        };
+
+        const status = freshMiner.last_status || freshMiner;
+        const profile = getMinerOCProfileByIP(ip);
+        const currentTemp = status.temperature || 0;
+        const currentFreq = status.raw?.frequency || status.frequency || profile.frequency.stock;
+        const currentPower = status.power || 0;
+        const currentHashrate = status.hashrate || 0;
+
+        // Update state with current readings
+        state.currentTemp = currentTemp;
+        state.currentFreq = currentFreq;
+        state.currentHashrate = currentHashrate;
+        state.currentEfficiency = calculateEfficiency(currentHashrate, currentPower);
+
+        // Determine action based on temperature
+        const timeSinceLastAdjust = Date.now() - state.lastAdjustment;
+        const canAdjust = timeSinceLastAdjust >= OPTIMIZATION_INTERVAL;
+
+        if (currentTemp >= profile.temp.throttle) {
+            // DANGER: Temperature too high - decrease frequency immediately
+            state.status = 'cooling';
+            if (canAdjust || currentTemp >= profile.temp.shutdown - 5) {
+                await adjustMinerFrequency(ip, -MAX_FREQ_STEP * 2); // Decrease more aggressively
+                state.lastAdjustment = Date.now();
+            }
+        } else if (currentTemp > profile.temp.safeMax) {
+            // WARNING: Above safe max - decrease frequency
+            state.status = 'reducing';
+            if (canAdjust) {
+                await adjustMinerFrequency(ip, -MAX_FREQ_STEP);
+                state.lastAdjustment = Date.now();
+            }
+        } else if (currentTemp >= profile.temp.efficiency.min && currentTemp <= profile.temp.optimal + 3) {
+            // OPTIMAL: In the sweet spot
+            state.status = 'optimal';
+            // Small adjustment if slightly below optimal and have headroom
+            if (canAdjust && currentTemp < profile.temp.optimal - 2 && currentFreq < profile.frequency.max - MAX_FREQ_STEP) {
+                await adjustMinerFrequency(ip, Math.floor(MAX_FREQ_STEP / 2)); // Smaller step when near optimal
+                state.lastAdjustment = Date.now();
+            }
+        } else if (currentTemp < profile.temp.efficiency.min) {
+            // COLD: Can increase frequency
+            state.status = 'increasing';
+            if (canAdjust && currentFreq < profile.frequency.max) {
+                await adjustMinerFrequency(ip, MAX_FREQ_STEP);
+                state.lastAdjustment = Date.now();
+            }
+        } else {
+            // Between optimal and safeMax - holding steady
+            state.status = 'stable';
+        }
+
+        // Check if we've reached max frequency
+        if (currentFreq >= profile.frequency.max - 5) {
+            state.status = 'max_freq';
+        }
+
+        // Update UI if modal is open for this miner
+        if (currentMinerIP === ip) {
+            updateMinerOptimizeUI();
+        }
+
+    } catch (error) {
+        console.error(`Optimization cycle error for ${ip}:`, error);
+        state.status = 'error';
+    }
+}
+
+// Adjust miner frequency by delta
+async function adjustMinerFrequency(ip, delta) {
+    const miner = minersCache[ip];
+    if (!miner) return false;
+
+    const status = miner.last_status || {};
+    const profile = getMinerOCProfileByIP(ip);
+    const currentFreq = status.raw?.frequency || status.frequency || profile.frequency.stock;
+    let newFreq = currentFreq + delta;
+
+    // Clamp to valid range
+    newFreq = Math.max(profile.frequency.min, Math.min(profile.frequency.max, newFreq));
+
+    // Don't adjust if no change needed
+    if (newFreq === currentFreq) return false;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/miner/${ip}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ frequency: newFreq })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            // Update cache
+            if (minersCache[ip].last_status) {
+                if (!minersCache[ip].last_status.raw) minersCache[ip].last_status.raw = {};
+                minersCache[ip].last_status.raw.frequency = newFreq;
+                minersCache[ip].last_status.frequency = newFreq;
+            }
+
+            // Update optimization state
+            if (optimizationState.miners[ip]) {
+                optimizationState.miners[ip].adjustmentCount++;
+                optimizationState.miners[ip].currentFreq = newFreq;
+            }
+
+            console.log(`Auto-optimize: ${ip} frequency adjusted from ${currentFreq} to ${newFreq} MHz`);
+            return true;
+        }
+    } catch (error) {
+        console.error(`Failed to adjust frequency for ${ip}:`, error);
+    }
+
+    return false;
+}
+
+// Calculate efficiency (W/TH)
+function calculateEfficiency(hashrate, power) {
+    if (!hashrate || !power) return 0;
+    const hashrateTH = hashrate / 1e12;
+    return hashrateTH > 0 ? (power / hashrateTH) : 0;
+}
+
+// Update the modal optimization UI
+function updateMinerOptimizeUI() {
+    if (!currentMinerIP) return;
+
+    const state = optimizationState.miners[currentMinerIP];
+    const profile = getMinerOCProfileByIP(currentMinerIP);
+    const miner = minersCache[currentMinerIP];
+    const status = miner?.last_status || miner || {};
+
+    // Update target temp display
+    const targetTempEl = document.getElementById('modal-target-temp');
+    if (targetTempEl) targetTempEl.textContent = `${profile.temp.optimal}°C`;
+
+    // Update current temp display
+    const currentTempEl = document.getElementById('modal-current-temp-opt');
+    const currentTemp = status.temperature || 0;
+    if (currentTempEl) {
+        currentTempEl.textContent = `${currentTemp.toFixed(1)}°C`;
+        currentTempEl.className = 'target-value';
+        if (currentTemp >= profile.temp.throttle) {
+            currentTempEl.classList.add('danger');
+        } else if (currentTemp > profile.temp.safeMax) {
+            currentTempEl.classList.add('warning');
+        } else if (currentTemp >= profile.temp.efficiency.min && currentTemp <= profile.temp.optimal + 3) {
+            currentTempEl.classList.add('optimal');
+        }
+    }
+
+    // Update status display
+    const statusEl = document.getElementById('modal-opt-status');
+    if (statusEl) {
+        const statusText = getOptimizationStatusText(state?.status || 'idle');
+        statusEl.textContent = statusText;
+        statusEl.className = 'target-value';
+        if (state?.active) {
+            statusEl.classList.add('optimizing');
+        }
+        if (state?.status === 'optimal') {
+            statusEl.classList.add('optimal');
+        }
+    }
+
+    // Update progress bar and button
+    const progressEl = document.getElementById('auto-optimize-progress');
+    const progressFill = document.getElementById('opt-progress-fill');
+    const progressText = document.getElementById('opt-progress-text');
+    const btn = document.getElementById('auto-optimize-miner-btn');
+    const btnText = document.getElementById('auto-optimize-miner-text');
+    const card = document.querySelector('.auto-optimize-card');
+
+    if (state?.active) {
+        // Show progress
+        if (progressEl) progressEl.style.display = 'block';
+
+        // Calculate progress based on temperature approach to optimal
+        const tempDiff = Math.abs(currentTemp - profile.temp.optimal);
+        const maxDiff = profile.temp.safeMax - profile.temp.efficiency.min;
+        const progress = Math.max(0, Math.min(100, 100 - (tempDiff / maxDiff * 100)));
+
+        if (progressFill) progressFill.style.width = `${progress}%`;
+        if (progressText) progressText.textContent = getProgressText(state);
+
+        // Update button to stop mode
+        if (btn) btn.classList.add('stop');
+        if (btnText) {
+            btnText.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="16" height="16"><rect x="6" y="6" width="12" height="12"/></svg> Stop Optimization`;
+        }
+
+        if (card) card.classList.add('optimizing');
+    } else {
+        // Hide progress, show start button
+        if (progressEl) progressEl.style.display = 'none';
+        if (btn) btn.classList.remove('stop');
+        if (btnText) {
+            btnText.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start Auto Optimize`;
+        }
+        if (card) card.classList.remove('optimizing');
+    }
+}
+
+// Get human-readable status text
+function getOptimizationStatusText(status) {
+    const statusMap = {
+        'idle': 'Idle',
+        'starting': 'Starting...',
+        'increasing': 'Increasing Freq',
+        'stable': 'Stable',
+        'optimal': 'Optimal',
+        'reducing': 'Reducing Freq',
+        'cooling': 'Cooling Down',
+        'max_freq': 'Max Frequency',
+        'stopped': 'Stopped',
+        'offline': 'Miner Offline',
+        'error': 'Error'
+    };
+    return statusMap[status] || status;
+}
+
+// Get progress text
+function getProgressText(state) {
+    if (!state) return '';
+
+    const elapsed = Math.floor((Date.now() - state.startTime) / 60000);
+    const freqChange = (state.currentFreq || state.startFreq) - state.startFreq;
+    const freqSign = freqChange >= 0 ? '+' : '';
+
+    return `Running ${elapsed}m | Freq: ${freqSign}${freqChange} MHz | Adjustments: ${state.adjustmentCount || 0}`;
+}
+
+// Initialize auto-optimize button event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    const fleetBtn = document.getElementById('auto-optimize-fleet-btn');
+    if (fleetBtn) {
+        fleetBtn.addEventListener('click', toggleFleetAutoOptimize);
+    }
+});
+
+// Get OC profile for current miner
+function getMinerOCProfile() {
+    if (!currentMinerIP || !minersCache[currentMinerIP]) {
+        return MINER_OC_PROFILES['default'];
+    }
+
+    const miner = minersCache[currentMinerIP];
+    const model = (miner.model || miner.type || '').toLowerCase();
+
+    // Try exact matches first
+    for (const [key, profile] of Object.entries(MINER_OC_PROFILES)) {
+        if (key !== 'default' && model.includes(key.toLowerCase())) {
+            return profile;
+        }
+    }
+
+    // Try partial/variant matches
+    // BitAxe variants
+    if (model.includes('ultra') || model.includes('bm1366')) return MINER_OC_PROFILES['BitAxe Ultra'];
+    if (model.includes('supra') || model.includes('bm1368')) return MINER_OC_PROFILES['BitAxe Supra'];
+    if (model.includes('gamma') || model.includes('bm1370') || model.includes('601')) return MINER_OC_PROFILES['BitAxe Gamma'];
+    if (model.includes('hex') || model.includes('6x')) return MINER_OC_PROFILES['BitAxe Hex'];
+
+    // NerdAxe variants
+    if (model.includes('nerdoctaxe') || model.includes('octaxe') || model.includes('8x')) return MINER_OC_PROFILES['NerdOctaxe'];
+    if (model.includes('nerdqaxe') || model.includes('qaxe') || model.includes('4x') || model.includes('quad')) return MINER_OC_PROFILES['NerdQAxe++'];
+    if (model.includes('nerdaxe')) return MINER_OC_PROFILES['NerdAxe'];
+
+    // Antminer variants
+    if (model.includes('s19')) return MINER_OC_PROFILES['Antminer S19'];
+    if (model.includes('s9') || model.includes('antminer')) return MINER_OC_PROFILES['Antminer S9'];
+
+    // Whatsminer
+    if (model.includes('whatsminer') || model.includes('m30')) return MINER_OC_PROFILES['Whatsminer M30S'];
+
+    // Generic BitAxe fallback
+    if (model.includes('bitaxe') || model.includes('axe')) return MINER_OC_PROFILES['BitAxe Ultra'];
+
+    return MINER_OC_PROFILES['default'];
+}
+
+// Update OC UI for current miner's profile
+function updateOCProfileUI() {
+    const profile = getMinerOCProfile();
+
+    // Update voltage input constraints
+    const voltageInput = document.getElementById('voltage-input');
+    if (voltageInput) {
+        voltageInput.min = profile.voltage.min;
+        voltageInput.max = profile.voltage.max;
+    }
+
+    // Update voltage range display
+    const voltageRange = document.querySelector('.voltage-range');
+    if (voltageRange) {
+        voltageRange.innerHTML = `
+            <span>Safe: ${profile.voltage.safe.min}-${profile.voltage.safe.max} mV</span>
+            <span class="voltage-danger">Danger: >${profile.voltage.danger} mV</span>
+        `;
+    }
+
+    // Update frequency preset buttons
+    const presetButtons = document.querySelectorAll('.preset-btn');
+    presetButtons.forEach(btn => {
+        const preset = btn.dataset.preset;
+        const freqSpan = btn.querySelector('.preset-freq');
+        if (freqSpan && profile.frequency[preset]) {
+            freqSpan.textContent = `${profile.frequency[preset]} MHz`;
+        }
+    });
+
+    // Update custom frequency input constraints and value
+    const freqInput = document.getElementById('frequency-input');
+    if (freqInput) {
+        freqInput.min = profile.frequency.min;
+        freqInput.max = profile.frequency.max;
+
+        // Use the miner's actual current frequency if available
+        let currentFreq = profile.frequency.stock;
+        if (currentMinerIP && minersCache[currentMinerIP]) {
+            const minerStatus = minersCache[currentMinerIP].last_status || minersCache[currentMinerIP];
+            currentFreq = minerStatus?.raw?.frequency || minerStatus?.frequency || profile.frequency.stock;
+        }
+        freqInput.value = currentFreq;
+
+        // Sync preset buttons to highlight matching preset (if any)
+        syncPresetButtonsWithFrequency(currentFreq);
+    }
+
+    // Update frequency range hint
+    const freqRangeHint = document.getElementById('freq-range-hint');
+    if (freqRangeHint) {
+        freqRangeHint.textContent = `Range: ${profile.frequency.min}-${profile.frequency.max} MHz`;
+    }
+
+    // Add chip info to tuning section
+    const tuningSection = document.querySelector('.voltage-section h4');
+    if (tuningSection && !document.getElementById('chip-info')) {
+        const chipInfo = document.createElement('span');
+        chipInfo.id = 'chip-info';
+        chipInfo.className = 'chip-info-badge';
+        chipInfo.textContent = profile.chip;
+        tuningSection.appendChild(chipInfo);
+    } else if (document.getElementById('chip-info')) {
+        document.getElementById('chip-info').textContent = profile.chip;
+    }
+}
+
+// Set overclock preset - FREQUENCY ONLY, never auto-adjust voltage
+function setOCPreset(preset) {
+    const profile = getMinerOCProfile();
+
+    // Update preset button UI
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector(`.preset-btn[data-preset="${preset}"]`)?.classList.add('active');
+
+    // Get frequency from profile
+    const frequency = profile.frequency[preset] || profile.frequency.stock;
+
+    // Sync all frequency displays
+    document.getElementById('modal-frequency').textContent = `${frequency} MHz`;
+
+    // Sync custom frequency input field
+    const freqInput = document.getElementById('frequency-input');
+    if (freqInput) {
+        freqInput.value = frequency;
+    }
+
+    showAlert(`Frequency preset "${preset}" selected (${frequency} MHz). Click Apply to send to miner.`, 'success');
+}
+
+// Toggle voltage controls visibility based on acknowledgment checkbox
+function toggleVoltageControls() {
+    const checkbox = document.getElementById('voltage-risk-checkbox');
+    const controls = document.getElementById('voltage-controls');
+    const acknowledge = document.getElementById('voltage-acknowledge');
+
+    if (checkbox && checkbox.checked) {
+        controls.style.display = 'block';
+        acknowledge.style.display = 'none';
+    } else {
+        controls.style.display = 'none';
+        acknowledge.style.display = 'block';
+    }
+}
+
+// Adjust voltage by increment (uses miner-specific bounds)
+function adjustVoltage(delta) {
+    const input = document.getElementById('voltage-input');
+    if (!input) return;
+
+    const profile = getMinerOCProfile();
+    let value = parseInt(input.value) || profile.voltage.stock;
+    value += delta;
+
+    // Clamp to miner-specific range
+    value = Math.max(profile.voltage.min, Math.min(profile.voltage.max, value));
+    input.value = value;
+
+    // Update visual warning for dangerous values
+    updateVoltageWarning(value);
+}
+
+// Update voltage input warning state (uses miner-specific profile)
+function updateVoltageWarning(value) {
+    const input = document.getElementById('voltage-input');
+    if (!input) return;
+
+    const profile = getMinerOCProfile();
+    const dangerThreshold = profile.voltage.danger;
+
+    if (value > dangerThreshold) {
+        input.classList.add('danger');
+    } else {
+        input.classList.remove('danger');
+    }
+}
+
+// Apply voltage change to miner
+async function applyVoltage() {
+    const input = document.getElementById('voltage-input');
+    if (!input || !currentMinerIP) return;
+
+    const voltage = parseInt(input.value);
+    const profile = getMinerOCProfile();
+    const miner = minersCache[currentMinerIP];
+    const minerName = miner?.model || miner?.type || 'this miner';
+
+    // Validate against miner-specific bounds
+    if (voltage < profile.voltage.min || voltage > profile.voltage.max) {
+        showAlert(`Voltage ${voltage} mV is outside valid range for ${minerName} (${profile.voltage.min}-${profile.voltage.max} mV)`, 'error');
+        return;
+    }
+
+    // Extra confirmation for dangerous voltage levels (miner-specific)
+    if (voltage > profile.voltage.danger) {
+        const confirmed = confirm(
+            `⚠️ EXTREME DANGER for ${minerName}!\n\n` +
+            `${voltage} mV exceeds safe limit (${profile.voltage.danger} mV) for ${profile.chip} chip(s).\n\n` +
+            `This voltage level can:\n` +
+            `• Permanently destroy your ASIC chips\n` +
+            `• Cause overheating and fire risk\n` +
+            `• Void any warranty immediately\n\n` +
+            `Are you ABSOLUTELY SURE you want to apply ${voltage} mV?`
+        );
+        if (!confirmed) return;
+    } else if (voltage < profile.voltage.safe.min) {
+        const confirmed = confirm(
+            `⚠️ WARNING: ${voltage} mV is below recommended range for ${minerName}.\n\n` +
+            `Safe range for ${profile.chip}: ${profile.voltage.safe.min}-${profile.voltage.safe.max} mV\n\n` +
+            `Low voltage may cause:\n` +
+            `• Unstable operation\n` +
+            `• Increased error rates\n` +
+            `• Reduced hashrate\n\n` +
+            `Continue with ${voltage} mV?`
+        );
+        if (!confirmed) return;
+    } else if (voltage > profile.voltage.safe.max) {
+        const confirmed = confirm(
+            `⚠️ CAUTION: ${voltage} mV is above recommended safe range for ${minerName}.\n\n` +
+            `Safe range for ${profile.chip}: ${profile.voltage.safe.min}-${profile.voltage.safe.max} mV\n\n` +
+            `Higher voltage increases heat and reduces chip lifespan.\n\n` +
+            `Continue with ${voltage} mV?`
+        );
+        if (!confirmed) return;
+    } else {
+        const confirmed = confirm(
+            `Apply voltage: ${voltage} mV to ${minerName}?\n\n` +
+            `This is within the safe range for ${profile.chip}.`
+        );
+        if (!confirmed) return;
+    }
+
+    try {
+        // Send voltage change to miner
+        const response = await fetch(`${API_BASE}/api/miner/${currentMinerIP}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ coreVoltage: voltage })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showAlert(`Voltage set to ${voltage} mV. Miner may restart.`, 'success');
+
+            // Update modal display
+            document.getElementById('modal-voltage').textContent = `${voltage} mV`;
+
+            // Update cache with new voltage
+            if (minersCache[currentMinerIP]) {
+                if (!minersCache[currentMinerIP].last_status) {
+                    minersCache[currentMinerIP].last_status = {};
+                }
+                if (!minersCache[currentMinerIP].last_status.raw) {
+                    minersCache[currentMinerIP].last_status.raw = {};
+                }
+                minersCache[currentMinerIP].last_status.raw.coreVoltage = voltage;
+                minersCache[currentMinerIP].last_status.core_voltage = voltage;
+            }
+
+            // Update the miner card in the fleet view
+            updateMinerCardData(currentMinerIP);
+        } else {
+            showAlert(`Failed to set voltage: ${result.error || 'Unknown error'}`, 'error');
+        }
+    } catch (error) {
+        showAlert(`Error applying voltage: ${error.message}`, 'error');
+    }
+}
+
+// Adjust frequency by increment (uses miner-specific bounds)
+function adjustFrequency(delta) {
+    const input = document.getElementById('frequency-input');
+    if (!input) return;
+
+    const profile = getMinerOCProfile();
+    let value = parseInt(input.value) || profile.frequency.stock;
+    value += delta;
+
+    // Clamp to miner-specific range
+    value = Math.max(profile.frequency.min, Math.min(profile.frequency.max, value));
+    input.value = value;
+
+    // Sync preset buttons - will select matching preset or deselect all
+    syncPresetButtonsWithFrequency(value);
+}
+
+// Apply custom frequency to miner
+async function applyFrequency() {
+    const input = document.getElementById('frequency-input');
+    if (!input || !currentMinerIP) return;
+
+    const frequency = parseInt(input.value);
+    const profile = getMinerOCProfile();
+    const miner = minersCache[currentMinerIP];
+    const minerName = miner?.model || miner?.type || 'this miner';
+
+    // Validate against miner-specific bounds
+    if (frequency < profile.frequency.min || frequency > profile.frequency.max) {
+        showAlert(`Frequency ${frequency} MHz is outside valid range for ${minerName} (${profile.frequency.min}-${profile.frequency.max} MHz)`, 'error');
+        return;
+    }
+
+    // Warning for frequencies above "heavy" preset
+    if (frequency > profile.frequency.heavy) {
+        const confirmed = confirm(
+            `⚠️ HIGH FREQUENCY WARNING for ${minerName}\n\n` +
+            `${frequency} MHz exceeds the "Heavy" preset (${profile.frequency.heavy} MHz).\n\n` +
+            `Running at very high frequencies may:\n` +
+            `• Increase chip temperature significantly\n` +
+            `• Cause instability and errors\n` +
+            `• Require additional cooling\n\n` +
+            `Continue with ${frequency} MHz?`
+        );
+        if (!confirmed) return;
+    }
+
+    const confirmed = confirm(`Apply frequency: ${frequency} MHz to ${minerName}?`);
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/miner/${currentMinerIP}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ frequency: frequency })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showAlert(`Frequency set to ${frequency} MHz. Miner may restart.`, 'success');
+
+            // Update modal display
+            document.getElementById('modal-frequency').textContent = `${frequency} MHz`;
+
+            // Update cache with new frequency
+            if (minersCache[currentMinerIP]) {
+                if (!minersCache[currentMinerIP].last_status) {
+                    minersCache[currentMinerIP].last_status = {};
+                }
+                if (!minersCache[currentMinerIP].last_status.raw) {
+                    minersCache[currentMinerIP].last_status.raw = {};
+                }
+                minersCache[currentMinerIP].last_status.raw.frequency = frequency;
+                minersCache[currentMinerIP].last_status.frequency = frequency;
+            }
+
+            // Update preset button selection based on whether freq matches a preset
+            syncPresetButtonsWithFrequency(frequency);
+
+            // Update the miner card in the fleet view
+            updateMinerCardData(currentMinerIP);
+        } else {
+            showAlert(`Failed to set frequency: ${result.error || 'Unknown error'}`, 'error');
+        }
+    } catch (error) {
+        showAlert(`Error applying frequency: ${error.message}`, 'error');
+    }
+}
+
+// Sync preset buttons with a given frequency value
+// Selects matching preset or deselects all if custom value
+function syncPresetButtonsWithFrequency(frequency) {
+    const profile = getMinerOCProfile();
+
+    // Check if frequency matches any preset
+    const presets = ['stock', 'mild', 'med', 'heavy'];
+    let matchingPreset = null;
+
+    for (const preset of presets) {
+        if (profile.frequency[preset] === frequency) {
+            matchingPreset = preset;
+            break;
+        }
+    }
+
+    // Update preset buttons
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    if (matchingPreset) {
+        document.querySelector(`.preset-btn[data-preset="${matchingPreset}"]`)?.classList.add('active');
+    }
+}
+
+// Update a single miner card in the fleet view without reloading all miners
+function updateMinerCardData(ip) {
+    const miner = minersCache[ip];
+    if (!miner) return;
+
+    const cardId = `miner-card-${ip.replace(/\./g, '-')}`;
+    const card = document.getElementById(cardId);
+    if (!card) return;
+
+    const status = miner.last_status || miner;
+    const isOnline = status.status === 'online';
+
+    // Update status class
+    if (isOnline) {
+        card.classList.remove('offline');
+    } else {
+        card.classList.add('offline');
+    }
+
+    // Update individual stats within the card if they exist
+    const statsContainer = card.querySelector('.miner-stats');
+    if (statsContainer && isOnline) {
+        // Update hashrate
+        const hashrateEl = statsContainer.querySelector('.miner-stat:nth-child(1) .miner-stat-value');
+        if (hashrateEl) hashrateEl.textContent = formatHashrate(status.hashrate || 0);
+
+        // Update temperature
+        const tempEl = statsContainer.querySelector('.miner-stat:nth-child(2) .miner-stat-value');
+        if (tempEl) tempEl.textContent = `${(status.temperature || 0).toFixed(1)}°C`;
+
+        // Update power
+        const powerEl = statsContainer.querySelector('.miner-stat:nth-child(3) .miner-stat-value');
+        if (powerEl) powerEl.textContent = `${(status.power || 0).toFixed(1)} W`;
+
+        // Update fan speed
+        const fanEl = statsContainer.querySelector('.miner-stat:nth-child(4) .miner-stat-value');
+        if (fanEl) fanEl.textContent = status.fan_speed || 'N/A';
+
+        // Update shares
+        const sharesEl = statsContainer.querySelector('.miner-stat:nth-child(5) .miner-stat-value');
+        if (sharesEl) sharesEl.textContent = formatNumber(status.shares_accepted || 0);
+
+        // Update best difficulty
+        const diffEl = statsContainer.querySelector('.miner-stat:nth-child(6) .miner-stat-value');
+        if (diffEl) diffEl.textContent = formatDifficulty(status.best_difficulty || 0);
+    }
+}
+
+// Reset voltage controls when modal opens
+function resetVoltageControls() {
+    const checkbox = document.getElementById('voltage-risk-checkbox');
+    const controls = document.getElementById('voltage-controls');
+    const acknowledge = document.getElementById('voltage-acknowledge');
+
+    if (checkbox) checkbox.checked = false;
+    if (controls) controls.style.display = 'none';
+    if (acknowledge) acknowledge.style.display = 'block';
+}
+
+// Initialize input listeners (called once on page load)
+document.addEventListener('DOMContentLoaded', function() {
+    // Voltage input - update warning state as user types
+    const voltageInput = document.getElementById('voltage-input');
+    if (voltageInput) {
+        voltageInput.addEventListener('input', function() {
+            const value = parseInt(this.value) || 0;
+            updateVoltageWarning(value);
+        });
+    }
+
+    // Frequency input - sync preset buttons as user types
+    const frequencyInput = document.getElementById('frequency-input');
+    if (frequencyInput) {
+        frequencyInput.addEventListener('input', function() {
+            const value = parseInt(this.value) || 0;
+            syncPresetButtonsWithFrequency(value);
+        });
+    }
+});
+
+// Open overclock settings - scrolls to tuning tab
+function openOCSettings() {
+    switchMinerTab('tuning');
 }

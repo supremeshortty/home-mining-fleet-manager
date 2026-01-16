@@ -127,6 +127,13 @@
                     </svg>
                     Discover Miners
                 </button>
+                <button id="auto-optimize-fleet-btn" class="btn btn-success">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon">
+                        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    <span id="auto-optimize-fleet-text">Auto Optimize Fleet</span>
+                </button>
                 <div class="live-indicator">
                     <span class="live-dot"></span>
                     <span>Live</span>
@@ -706,6 +713,384 @@
         </main>
 
         <div id="alert-box" class="alert" style="display: none;"></div>
+    </div>
+
+    <!-- Miner Detail Modal - Unique Tabbed Dashboard Layout -->
+    <div id="miner-detail-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content miner-detail-modal">
+            <!-- Compact Header with Status Ring -->
+            <div class="miner-modal-header">
+                <button class="modal-close-btn" onclick="closeMinerDetail()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+                <div class="miner-identity">
+                    <div class="miner-avatar" id="modal-miner-status">
+                        <div class="avatar-ring"></div>
+                        <span class="avatar-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="4" y="4" width="16" height="16" rx="2"/>
+                                <rect x="9" y="9" width="6" height="6"/>
+                            </svg>
+                        </span>
+                    </div>
+                    <div class="miner-info">
+                        <h2 id="modal-miner-name">Miner Name</h2>
+                        <span class="miner-type-label" id="modal-miner-type">BitAxe Ultra</span>
+                        <span class="miner-ip-badge" id="modal-miner-ip">192.168.1.100</span>
+                    </div>
+                </div>
+                <button class="webui-btn" onclick="openMinerWebUI()" title="Open Web UI">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                        <polyline points="15 3 21 3 21 9"/>
+                        <line x1="10" y1="14" x2="21" y2="3"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="miner-tabs">
+                <button class="miner-tab active" data-tab="overview" onclick="switchMinerTab('overview')">Overview</button>
+                <button class="miner-tab" data-tab="performance" onclick="switchMinerTab('performance')">Performance</button>
+                <button class="miner-tab" data-tab="tuning" onclick="switchMinerTab('tuning')">Tuning</button>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="miner-tab-content">
+                <!-- OVERVIEW TAB -->
+                <div class="miner-tab-pane active" id="tab-overview">
+                    <!-- Primary Metric - Large Hashrate Display -->
+                    <div class="primary-metric">
+                        <div class="metric-ring">
+                            <svg viewBox="0 0 120 120">
+                                <circle cx="60" cy="60" r="54" class="ring-bg"/>
+                                <circle cx="60" cy="60" r="54" class="ring-progress" id="hashrate-ring"/>
+                            </svg>
+                            <div class="metric-center">
+                                <span class="metric-value" id="modal-hashrate">0</span>
+                                <span class="metric-unit">TH/s</span>
+                            </div>
+                        </div>
+                        <div class="metric-label">Real Hashrate</div>
+                    </div>
+
+                    <!-- Stats Grid - 2x3 layout -->
+                    <div class="stats-mosaic">
+                        <div class="mosaic-tile temperature">
+                            <div class="tile-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+                                </svg>
+                            </div>
+                            <div class="tile-content">
+                                <span class="tile-value" id="modal-temp">0°C</span>
+                                <span class="tile-label">Chip Temp</span>
+                            </div>
+                        </div>
+                        <div class="mosaic-tile power">
+                            <div class="tile-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                                </svg>
+                            </div>
+                            <div class="tile-content">
+                                <span class="tile-value" id="modal-power">0 W</span>
+                                <span class="tile-label">Power</span>
+                            </div>
+                        </div>
+                        <div class="mosaic-tile efficiency">
+                            <div class="tile-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <polyline points="12 6 12 12 16 14"/>
+                                </svg>
+                            </div>
+                            <div class="tile-content">
+                                <span class="tile-value" id="modal-efficiency">0</span>
+                                <span class="tile-label">W/TH</span>
+                            </div>
+                        </div>
+                        <div class="mosaic-tile shares">
+                            <div class="tile-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                                    <polyline points="22 4 12 14.01 9 11.01"/>
+                                </svg>
+                            </div>
+                            <div class="tile-content">
+                                <span class="tile-value" id="modal-shares">0</span>
+                                <span class="tile-label">Shares</span>
+                            </div>
+                        </div>
+                        <div class="mosaic-tile fan">
+                            <div class="tile-icon spinning">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="3"/>
+                                    <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4"/>
+                                </svg>
+                            </div>
+                            <div class="tile-content">
+                                <span class="tile-value" id="modal-fan-percent">0%</span>
+                                <span class="tile-label">Fan</span>
+                            </div>
+                        </div>
+                        <div class="mosaic-tile uptime">
+                            <div class="tile-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <polyline points="12 6 12 12 16 10"/>
+                                </svg>
+                            </div>
+                            <div class="tile-content">
+                                <span class="tile-value" id="modal-uptime">0h</span>
+                                <span class="tile-label">Uptime</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pool Status Bar -->
+                    <div class="pool-bar">
+                        <div class="pool-indicator" id="modal-pool-status">
+                            <span class="pool-dot"></span>
+                            <span class="pool-text">Pool Connected</span>
+                        </div>
+                        <span class="pool-url" id="modal-pool-url">stratum+tcp://...</span>
+                    </div>
+                </div>
+
+                <!-- PERFORMANCE TAB -->
+                <div class="miner-tab-pane" id="tab-performance">
+                    <!-- Best Difficulty Card -->
+                    <div class="perf-highlight">
+                        <div class="highlight-label">Best Difficulty</div>
+                        <div class="highlight-value" id="modal-best-diff">0</div>
+                        <div class="highlight-sub">Session: <span id="modal-session-diff">0</span></div>
+                    </div>
+
+                    <!-- Live Metrics -->
+                    <div class="live-metrics">
+                        <h4>Live Readings</h4>
+                        <div class="live-grid">
+                            <div class="live-item">
+                                <span class="live-label">Hashrate</span>
+                                <span class="live-value" id="modal-perf-hashrate">0 TH/s</span>
+                            </div>
+                            <div class="live-item">
+                                <span class="live-label">Chip Temp</span>
+                                <span class="live-value" id="modal-perf-temp">0°C</span>
+                            </div>
+                            <div class="live-item">
+                                <span class="live-label">VR Temp</span>
+                                <span class="live-value" id="modal-vr-temp">--°C</span>
+                            </div>
+                            <div class="live-item">
+                                <span class="live-label">Power</span>
+                                <span class="live-value" id="modal-perf-power">0 W</span>
+                            </div>
+                            <div class="live-item">
+                                <span class="live-label">Current</span>
+                                <span class="live-value" id="modal-perf-current">0 A</span>
+                            </div>
+                            <div class="live-item">
+                                <span class="live-label">Daily Energy</span>
+                                <span class="live-value" id="modal-kwh-day">0 kWh</span>
+                            </div>
+                            <div class="live-item">
+                                <span class="live-label">Fan RPM</span>
+                                <span class="live-value" id="modal-fan-rpm">0</span>
+                            </div>
+                            <div class="live-item">
+                                <span class="live-label">WiFi Signal</span>
+                                <span class="live-value" id="modal-wifi-signal">-65 dBm</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Share Stats -->
+                    <div class="share-stats">
+                        <h4>Share Statistics</h4>
+                        <div class="share-bar">
+                            <div class="share-accepted" id="share-bar-accepted" style="width: 98%"></div>
+                        </div>
+                        <div class="share-numbers">
+                            <span class="accepted">Accepted: <strong id="modal-pool-shares">0</strong></span>
+                            <span class="rejected">Rejected: <strong id="modal-rejected-shares">0</strong></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TUNING TAB -->
+                <div class="miner-tab-pane" id="tab-tuning">
+                    <!-- Auto Optimize Section -->
+                    <div class="auto-optimize-section" id="auto-optimize-section">
+                        <div class="auto-optimize-card">
+                            <div class="auto-optimize-header">
+                                <div class="auto-optimize-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                                        <circle cx="12" cy="12" r="3"/>
+                                    </svg>
+                                </div>
+                                <div class="auto-optimize-info">
+                                    <h4>Auto Optimize</h4>
+                                    <p>Gradually increase frequency to reach optimal temperature for maximum efficiency.</p>
+                                </div>
+                            </div>
+                            <div class="auto-optimize-targets">
+                                <div class="target-item">
+                                    <span class="target-label">Target Temp</span>
+                                    <span class="target-value" id="modal-target-temp">55°C</span>
+                                </div>
+                                <div class="target-item">
+                                    <span class="target-label">Current Temp</span>
+                                    <span class="target-value" id="modal-current-temp-opt">--°C</span>
+                                </div>
+                                <div class="target-item">
+                                    <span class="target-label">Status</span>
+                                    <span class="target-value" id="modal-opt-status">Idle</span>
+                                </div>
+                            </div>
+                            <div class="auto-optimize-progress" id="auto-optimize-progress" style="display: none;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="opt-progress-fill" style="width: 0%"></div>
+                                </div>
+                                <span class="progress-text" id="opt-progress-text">Starting...</span>
+                            </div>
+                            <button class="btn btn-success auto-optimize-btn" id="auto-optimize-miner-btn" onclick="toggleMinerAutoOptimize()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
+                                    <polygon points="5 3 19 12 5 21 5 3"/>
+                                </svg>
+                                <span id="auto-optimize-miner-text">Start Auto Optimize</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Current Settings Display -->
+                    <div class="tuning-current">
+                        <div class="tuning-stat">
+                            <span class="tuning-label">Frequency</span>
+                            <span class="tuning-value" id="modal-frequency">525 MHz</span>
+                        </div>
+                        <div class="tuning-divider"></div>
+                        <div class="tuning-stat">
+                            <span class="tuning-label">Core Voltage</span>
+                            <span class="tuning-value warning" id="modal-voltage">1150 mV</span>
+                        </div>
+                    </div>
+
+                    <!-- Frequency Presets -->
+                    <div class="tuning-section">
+                        <h4>Frequency Presets</h4>
+                        <p class="tuning-hint">Adjust frequency only. Voltage remains unchanged for safety.</p>
+                        <div class="preset-buttons">
+                            <button class="preset-btn active" data-preset="stock" onclick="setOCPreset('stock')">
+                                <span class="preset-name">Stock</span>
+                                <span class="preset-freq">485 MHz</span>
+                            </button>
+                            <button class="preset-btn" data-preset="mild" onclick="setOCPreset('mild')">
+                                <span class="preset-name">Mild</span>
+                                <span class="preset-freq">525 MHz</span>
+                            </button>
+                            <button class="preset-btn" data-preset="med" onclick="setOCPreset('med')">
+                                <span class="preset-name">Medium</span>
+                                <span class="preset-freq">550 MHz</span>
+                            </button>
+                            <button class="preset-btn" data-preset="heavy" onclick="setOCPreset('heavy')">
+                                <span class="preset-name">Heavy</span>
+                                <span class="preset-freq">575 MHz</span>
+                            </button>
+                        </div>
+
+                        <!-- Custom Frequency Input -->
+                        <div class="custom-frequency-section">
+                            <div class="custom-freq-header">
+                                <span class="custom-freq-label">Custom Frequency</span>
+                                <span class="freq-range-hint" id="freq-range-hint">Range: 400-700 MHz</span>
+                            </div>
+                            <div class="custom-freq-controls">
+                                <button class="freq-adjust-btn" onclick="adjustFrequency(-25)">-25</button>
+                                <div class="freq-input-wrapper">
+                                    <input type="number" id="frequency-input" min="400" max="700" step="5" value="485">
+                                    <span class="freq-unit">MHz</span>
+                                </div>
+                                <button class="freq-adjust-btn" onclick="adjustFrequency(25)">+25</button>
+                                <button class="freq-apply-btn" onclick="applyFrequency()">Apply</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Voltage Control Section -->
+                    <div class="tuning-section voltage-section">
+                        <h4>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                            </svg>
+                            Core Voltage
+                        </h4>
+
+                        <!-- Voltage Warning -->
+                        <div class="voltage-warning" id="voltage-warning">
+                            <div class="warning-icon">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                    <line x1="12" y1="9" x2="12" y2="13"/>
+                                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                                </svg>
+                            </div>
+                            <div class="warning-text">
+                                <strong>Danger: Voltage Control</strong>
+                                <p>Incorrect voltage can permanently damage your miner, void warranty, or cause fire hazard.</p>
+                            </div>
+                        </div>
+
+                        <!-- Voltage Controls (hidden until acknowledged) -->
+                        <div class="voltage-controls" id="voltage-controls" style="display: none;">
+                            <div class="voltage-input-group">
+                                <label for="voltage-input">Voltage (mV)</label>
+                                <div class="voltage-input-row">
+                                    <button class="voltage-btn" onclick="adjustVoltage(-10)">-10</button>
+                                    <input type="number" id="voltage-input" min="800" max="1400" step="10" value="1150">
+                                    <button class="voltage-btn" onclick="adjustVoltage(10)">+10</button>
+                                </div>
+                                <div class="voltage-range">
+                                    <span>Safe: 1100-1200 mV</span>
+                                    <span class="voltage-danger">Danger: &gt;1250 mV</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-danger" onclick="applyVoltage()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                                </svg>
+                                Apply Voltage
+                            </button>
+                        </div>
+
+                        <!-- Acknowledge button -->
+                        <div class="voltage-acknowledge" id="voltage-acknowledge">
+                            <label class="acknowledge-checkbox">
+                                <input type="checkbox" id="voltage-risk-checkbox" onchange="toggleVoltageControls()">
+                                <span>I understand the risks and accept responsibility for any damage</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer Actions -->
+            <div class="miner-modal-footer">
+                <button class="btn btn-danger btn-sm" onclick="restartMinerFromModal()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                        <polyline points="23 4 23 10 17 10"/>
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                    </svg>
+                    Restart
+                </button>
+                <span class="footer-status" id="modal-uptime-status">Running</span>
+            </div>
+        </div>
     </div>
 
     <!-- Chart.js Library -->

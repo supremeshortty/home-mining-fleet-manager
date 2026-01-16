@@ -689,6 +689,108 @@ def update_miner_name(ip: str):
             }), 500
 
 
+@app.route('/api/miner/<ip>/settings', methods=['POST'])
+def update_miner_settings(ip: str):
+    """Update miner settings (frequency, voltage, etc.)
+    WARNING: Changing voltage can damage hardware!
+    """
+    data = request.get_json() or {}
+
+    with fleet.lock:
+        miner = fleet.miners.get(ip)
+        if not miner:
+            return jsonify({
+                'success': False,
+                'error': 'Miner not found'
+            }), 404
+
+        try:
+            settings = {}
+
+            # Core voltage (in mV)
+            if 'coreVoltage' in data:
+                voltage = int(data['coreVoltage'])
+                # Safety bounds check
+                if voltage < 800 or voltage > 1400:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Voltage {voltage}mV is outside safe range (800-1400mV)'
+                    }), 400
+                settings['coreVoltage'] = voltage
+
+            # Frequency (in MHz)
+            if 'frequency' in data:
+                freq = int(data['frequency'])
+                # Allow up to 1000 MHz for advanced chips like BM1370
+                if freq < 100 or freq > 1000:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Frequency {freq}MHz is outside safe range (100-1000MHz)'
+                    }), 400
+                settings['frequency'] = freq
+
+            # Fan speed (0-100%)
+            if 'fanSpeed' in data:
+                fan = int(data['fanSpeed'])
+                if fan < 0 or fan > 100:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Fan speed must be 0-100%'
+                    }), 400
+                settings['fanspeed'] = fan
+
+            if not settings:
+                return jsonify({
+                    'success': False,
+                    'error': 'No valid settings provided'
+                }), 400
+
+            # Handle mock miners - update status directly without hardware call
+            if getattr(miner, 'is_mock', False):
+                if miner.last_status:
+                    if not miner.last_status.get('raw'):
+                        miner.last_status['raw'] = {}
+                    # Update mock miner status with new settings
+                    if 'frequency' in settings:
+                        miner.last_status['raw']['frequency'] = settings['frequency']
+                        miner.last_status['frequency'] = settings['frequency']
+                    if 'coreVoltage' in settings:
+                        miner.last_status['raw']['coreVoltage'] = settings['coreVoltage']
+                        miner.last_status['core_voltage'] = settings['coreVoltage']
+                    if 'fanspeed' in settings:
+                        miner.last_status['raw']['fanSpeedPercent'] = settings['fanspeed']
+                        miner.last_status['fan_speed'] = settings['fanspeed']
+                logger.info(f"Mock miner {ip} settings updated: {settings}")
+                return jsonify({
+                    'success': True,
+                    'message': 'Settings updated successfully (mock)',
+                    'settings': settings
+                })
+
+            # Apply settings to real miner
+            result = miner.apply_settings(settings)
+
+            if result:
+                logger.info(f"Settings updated for {ip}: {settings}")
+                return jsonify({
+                    'success': True,
+                    'message': 'Settings updated successfully',
+                    'settings': settings
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to apply settings to miner'
+                }), 500
+
+        except Exception as e:
+            logger.error(f"Error updating settings for {ip}: {e}")
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
+
+
 @app.route('/api/miner/<ip>/pools', methods=['GET'])
 def get_miner_pools(ip: str):
     """Get pool configuration for a specific miner"""
@@ -1676,7 +1778,7 @@ def add_mock_miners():
                 'uptime_seconds': 86400,
                 'hostname': 'bitaxe-ultra-1',
                 'firmware': 'v2.4.0',
-                'raw': {'ASICModel': 'BM1366', 'ASICCount': 1}
+                'raw': {'ASICModel': 'BM1366', 'ASICCount': 1, 'frequency': 485, 'coreVoltage': 1200, 'fanSpeedPercent': 45}
             }
         },
         {
@@ -1700,7 +1802,7 @@ def add_mock_miners():
                 'uptime_seconds': 172800,
                 'hostname': 'nerdqaxe-plusplus',
                 'firmware': 'esp-miner-NERDQAXEPLUS-v1.0.35',
-                'raw': {'ASICModel': 'BM1370', 'ASICCount': 4}
+                'raw': {'ASICModel': 'BM1370', 'ASICCount': 4, 'frequency': 490, 'coreVoltage': 1150, 'fanSpeedPercent': 65}
             }
         },
         {
@@ -1724,7 +1826,7 @@ def add_mock_miners():
                 'uptime_seconds': 43200,
                 'hostname': 'bitaxe-gamma-1',
                 'firmware': 'v2.4.1',
-                'raw': {'ASICModel': 'BM1370', 'ASICCount': 1}
+                'raw': {'ASICModel': 'BM1370', 'ASICCount': 1, 'frequency': 575, 'coreVoltage': 1200, 'fanSpeedPercent': 50}
             }
         },
         {
@@ -1748,7 +1850,7 @@ def add_mock_miners():
                 'uptime_seconds': 259200,
                 'hostname': 'nerdaxe-1',
                 'firmware': 'v1.2.0',
-                'raw': {'ASICModel': 'BM1366', 'ASICCount': 1}
+                'raw': {'ASICModel': 'BM1366', 'ASICCount': 1, 'frequency': 490, 'coreVoltage': 1200, 'fanSpeedPercent': 40}
             }
         },
         {
@@ -1772,7 +1874,7 @@ def add_mock_miners():
                 'uptime_seconds': 7200,
                 'hostname': 'bitaxe-supra',
                 'firmware': 'v2.3.0',
-                'raw': {'ASICModel': 'BM1368', 'ASICCount': 1}
+                'raw': {'ASICModel': 'BM1368', 'ASICCount': 1, 'frequency': 525, 'coreVoltage': 1200, 'fanSpeedPercent': 48}
             }
         }
     ]
