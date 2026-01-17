@@ -60,14 +60,6 @@
                 </span>
                 <span class="nav-label">Alerts</span>
             </div>
-            <div class="nav-item" data-tab="weather">
-                <span class="nav-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
-                    </svg>
-                </span>
-                <span class="nav-label">Weather</span>
-            </div>
             <div class="nav-item" data-tab="pools">
                 <span class="nav-icon">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -155,7 +147,6 @@
                 <button class="tab-btn" data-tab="energy">Energy</button>
                 <button class="tab-btn" data-tab="charts">Charts</button>
                 <button class="tab-btn" data-tab="alerts">Alerts</button>
-                <button class="tab-btn" data-tab="weather">Weather</button>
                 <button class="tab-btn" data-tab="pools">Pools</button>
             </div>
 
@@ -651,55 +642,6 @@
                 </section>
             </div>
 
-            <!-- Weather Tab -->
-            <div id="weather-tab" class="tab-content">
-                <section class="weather-config-section">
-                    <h2>Weather Configuration</h2>
-                    <div class="config-card">
-                        <p>Get a free API key from <a href="https://openweathermap.org/api" target="_blank">OpenWeatherMap</a></p>
-                        <form id="weather-config-form">
-                            <div class="form-group">
-                                <label for="weather-api-key">API Key:</label>
-                                <input type="text" id="weather-api-key" placeholder="Your OpenWeatherMap API key">
-                            </div>
-                            <div class="form-group">
-                                <label for="weather-location">Location:</label>
-                                <input type="text" id="weather-location" placeholder="San Francisco,US">
-                            </div>
-                            <button type="submit" class="btn btn-primary">Save Configuration</button>
-                        </form>
-                    </div>
-                </section>
-
-                <section class="current-weather-section">
-                    <h2>Current Conditions</h2>
-                    <div id="current-weather-container">
-                        <p class="loading">Weather not configured or unavailable</p>
-                    </div>
-                </section>
-
-                <section class="weather-forecast-section">
-                    <h2>24-Hour Forecast</h2>
-                    <div id="weather-forecast-container">
-                        <p class="loading">No forecast available</p>
-                    </div>
-                </section>
-
-                <section class="thermal-prediction-section">
-                    <h2>Thermal Impact Prediction</h2>
-                    <div id="thermal-prediction-container">
-                        <p class="loading">No prediction available</p>
-                    </div>
-                </section>
-
-                <section class="optimal-hours-section">
-                    <h2>Optimal Mining Hours</h2>
-                    <div id="optimal-hours-container">
-                        <p class="loading">No data available</p>
-                    </div>
-                </section>
-            </div>
-
             <!-- Pools Tab -->
             <div id="pools-tab" class="tab-content">
                 <section class="pools-section">
@@ -960,10 +902,7 @@
                                 <span class="progress-text" id="opt-progress-text">Starting...</span>
                             </div>
                             <button class="btn btn-success auto-optimize-btn" id="auto-optimize-miner-btn" onclick="toggleMinerAutoOptimize()">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon">
-                                    <polygon points="5 3 19 12 5 21 5 3"/>
-                                </svg>
-                                <span id="auto-optimize-miner-text">Start Auto Optimize</span>
+                                <span id="auto-optimize-miner-text"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="btn-icon"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start Auto Optimize</span>
                             </button>
                         </div>
                     </div>
@@ -1019,6 +958,77 @@
                                 <button class="freq-adjust-btn" onclick="adjustFrequency(25)">+25</button>
                                 <button class="freq-apply-btn" onclick="applyFrequency()">Apply</button>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Fan Control Section -->
+                    <div class="tuning-section fan-section">
+                        <h4>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                <path d="M12 12c-1.5-2.5-4-4-4-4s1.5-2.5 4-2.5 4 2.5 4 2.5-2.5 1.5-4 4z"/>
+                                <path d="M12 12c2.5 1.5 4 4 4 4s2.5-1.5 2.5-4-2.5-4-2.5-4-1.5 2.5-4 4z"/>
+                                <path d="M12 12c1.5 2.5 4 4 4 4s-1.5 2.5-4 2.5-4-2.5-4-2.5 2.5-1.5 4-4z"/>
+                                <path d="M12 12c-2.5-1.5-4-4-4-4s-2.5 1.5-2.5 4 2.5 4 2.5 4 1.5-2.5 4-4z"/>
+                                <circle cx="12" cy="12" r="2"/>
+                            </svg>
+                            Fan Control
+                        </h4>
+
+                        <!-- Fan Mode Selector -->
+                        <div class="fan-mode-selector">
+                            <button class="fan-mode-btn active" id="fan-mode-manual-btn" onclick="setFanMode('manual')">
+                                <span class="mode-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                        <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/>
+                                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
+                                    </svg>
+                                </span>
+                                <span class="mode-text">Manual</span>
+                                <span class="mode-desc">Set exact fan speed</span>
+                            </button>
+                            <button class="fan-mode-btn" id="fan-mode-auto-btn" onclick="setFanMode('auto')">
+                                <span class="mode-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                                        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                                    </svg>
+                                </span>
+                                <span class="mode-text">Auto</span>
+                                <span class="mode-desc">Target temperature</span>
+                            </button>
+                        </div>
+
+                        <!-- Manual Fan Control -->
+                        <div class="fan-manual-controls" id="fan-manual-controls">
+                            <div class="fan-slider-container">
+                                <div class="fan-slider-row">
+                                    <input type="range" id="fan-speed-slider" min="20" max="100" value="50" oninput="updateFanSliderValue()">
+                                    <span class="fan-speed-value" id="fan-speed-value">50%</span>
+                                </div>
+                                <div class="fan-speed-hints">
+                                    <span>Quiet</span>
+                                    <span>Balanced</span>
+                                    <span>Max</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary fan-apply-btn" onclick="applyFanSpeed()">Apply</button>
+                        </div>
+
+                        <!-- Auto Fan Control -->
+                        <div class="fan-auto-controls" id="fan-auto-controls" style="display: none;">
+                            <div class="auto-fan-info">
+                                <div class="auto-fan-target">
+                                    <span class="target-label">Target Temperature</span>
+                                    <span class="target-value" id="auto-fan-target-temp">60°C</span>
+                                </div>
+                                <p class="auto-fan-desc">Fan speed will automatically adjust to maintain optimal chip temperature for this miner type.</p>
+                            </div>
+                            <button class="btn btn-primary fan-apply-btn" onclick="applyAutoFan()">Enable Auto Fan</button>
+                        </div>
+
+                        <!-- Current Fan Status -->
+                        <div class="fan-status">
+                            <span class="fan-status-label">Current:</span>
+                            <span class="fan-status-value" id="current-fan-status">-- %</span>
                         </div>
                     </div>
 

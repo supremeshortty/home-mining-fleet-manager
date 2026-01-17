@@ -949,6 +949,13 @@ section {
     transform: scale(1.15);
 }
 
+.miner-badges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
 .miner-type {
     font-family: 'IBM Plex Mono', monospace;
     background: var(--purple-glow);
@@ -960,6 +967,38 @@ section {
     text-transform: uppercase;
     letter-spacing: 0.05em;
     border: 1px solid var(--purple);
+}
+
+.optimization-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.optimization-badge.tuning {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.5);
+    animation: badge-pulse 2s ease-in-out infinite;
+}
+
+.optimization-badge.optimized {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success);
+    border: 1px solid rgba(16, 185, 129, 0.5);
+}
+
+@keyframes badge-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
 }
 
 .miner-ip {
@@ -2948,6 +2987,212 @@ section {
     user-select: none;
 }
 
+/* Fan Control Section */
+.fan-section h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--cyan);
+}
+
+.fan-section h4 svg {
+    color: var(--cyan);
+}
+
+.fan-mode-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.fan-mode-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 12px 8px;
+    background: var(--void);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.fan-mode-btn:hover {
+    border-color: var(--cyan);
+    background: rgba(0, 212, 255, 0.05);
+}
+
+.fan-mode-btn.active {
+    border-color: var(--cyan);
+    background: rgba(0, 212, 255, 0.1);
+}
+
+.fan-mode-btn .mode-icon {
+    color: var(--text-tertiary);
+    transition: color var(--transition-fast);
+}
+
+.fan-mode-btn.active .mode-icon {
+    color: var(--cyan);
+}
+
+.fan-mode-btn .mode-text {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.fan-mode-btn.active .mode-text {
+    color: var(--text-primary);
+}
+
+.fan-mode-btn .mode-desc {
+    font-size: 10px;
+    color: #8892a0;
+}
+
+.fan-manual-controls,
+.fan-auto-controls {
+    padding: 12px;
+    background: var(--void);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+    margin-bottom: 10px;
+}
+
+.fan-slider-container label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-bottom: 10px;
+}
+
+.fan-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+#fan-speed-slider {
+    flex: 1;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--border-default);
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+#fan-speed-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--cyan);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
+    transition: all var(--transition-fast);
+}
+
+#fan-speed-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 12px rgba(0, 212, 255, 0.6);
+}
+
+#fan-speed-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--cyan);
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
+}
+
+.fan-speed-value {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--cyan);
+    min-width: 48px;
+    text-align: right;
+}
+
+.fan-speed-hints {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 10px;
+    color: var(--text-tertiary);
+}
+
+.auto-fan-info {
+    text-align: center;
+    padding: 8px 0;
+}
+
+.auto-fan-target {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 12px;
+}
+
+.auto-fan-target .target-label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.auto-fan-target .target-value {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--success);
+}
+
+.auto-fan-desc {
+    font-size: 11px;
+    color: #8892a0;
+    line-height: 1.4;
+    margin: 0;
+}
+
+.fan-apply-btn {
+    width: 100%;
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.fan-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--void);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+    font-size: 12px;
+}
+
+.fan-status-label {
+    color: var(--text-tertiary);
+}
+
+.fan-status-value {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--cyan);
+}
+
 /* Footer */
 .miner-modal-footer {
     display: flex;
@@ -3153,13 +3398,20 @@ section {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
     font-weight: 600;
 }
 
+.auto-optimize-btn #auto-optimize-miner-text {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
 .auto-optimize-btn .btn-icon {
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
 }
 
 .auto-optimize-btn.stop {
@@ -3176,32 +3428,8 @@ section {
     box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.2);
 }
 
-.miner-card.optimizing::after {
-    content: 'OPTIMIZING';
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    font-size: 9px;
-    font-weight: 700;
-    color: #f59e0b;
-    background: rgba(245, 158, 11, 0.15);
-    padding: 2px 6px;
-    border-radius: 4px;
-    letter-spacing: 0.5px;
-}
-
-.miner-card.optimized::after {
-    content: 'OPTIMIZED';
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    font-size: 9px;
-    font-weight: 700;
-    color: var(--success);
-    background: rgba(16, 185, 129, 0.15);
-    padding: 2px 6px;
-    border-radius: 4px;
-    letter-spacing: 0.5px;
+.miner-card.optimized {
+    border-color: rgba(16, 185, 129, 0.3);
 }
 
 /* Make miner cards clickable */

@@ -738,6 +738,22 @@ def update_miner_settings(ip: str):
                         'error': 'Fan speed must be 0-100%'
                     }), 400
                 settings['fanspeed'] = fan
+                # Disable auto fan when setting manual fan speed
+                settings['autofanspeed'] = 0
+
+            # Auto fan control
+            if 'autofanspeed' in data:
+                settings['autofanspeed'] = int(data['autofanspeed'])
+
+            # Target temperature for auto fan (40-75°C)
+            if 'targetTemp' in data:
+                target_temp = int(data['targetTemp'])
+                if target_temp < 40 or target_temp > 75:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Target temperature must be between 40-75°C'
+                    }), 400
+                settings['targetTemp'] = target_temp
 
             if not settings:
                 return jsonify({
@@ -760,6 +776,10 @@ def update_miner_settings(ip: str):
                     if 'fanspeed' in settings:
                         miner.last_status['raw']['fanSpeedPercent'] = settings['fanspeed']
                         miner.last_status['fan_speed'] = settings['fanspeed']
+                    if 'autofanspeed' in settings:
+                        miner.last_status['raw']['autofanspeed'] = settings['autofanspeed']
+                    if 'targetTemp' in settings:
+                        miner.last_status['raw']['targetTemp'] = settings['targetTemp']
                 logger.info(f"Mock miner {ip} settings updated: {settings}")
                 return jsonify({
                     'success': True,
@@ -1875,6 +1895,126 @@ def add_mock_miners():
                 'hostname': 'bitaxe-supra',
                 'firmware': 'v2.3.0',
                 'raw': {'ASICModel': 'BM1368', 'ASICCount': 1, 'frequency': 525, 'coreVoltage': 1200, 'fanSpeedPercent': 48}
+            }
+        },
+        {
+            'ip': '10.0.0.106',
+            'type': 'BitAxe',
+            'model': 'BitAxe',
+            'custom_name': 'Kitchen Counter Miner',
+            'status': {
+                'hashrate': 395e9,  # 395 GH/s (BM1397 original)
+                'temperature': 55.2,
+                'power': 9.8,  # ~25 J/TH efficiency
+                'fan_speed': 42,
+                'frequency': 425,
+                'voltage': 1150,
+                'status': 'online',
+                'asic_model': 'BM1397',
+                'asic_count': 1,
+                'shares_accepted': 821,
+                'shares_rejected': 2,
+                'best_difficulty': 1650000,  # 1.65M
+                'uptime_seconds': 129600,
+                'hostname': 'bitaxe-og-1',
+                'firmware': 'v2.2.0',
+                'raw': {'ASICModel': 'BM1397', 'ASICCount': 1, 'frequency': 425, 'coreVoltage': 1150, 'fanSpeedPercent': 42}
+            }
+        },
+        {
+            'ip': '10.0.0.107',
+            'type': 'BitAxe Max',
+            'model': 'BitAxe Max',
+            'custom_name': 'Bedroom Silent Miner',
+            'status': {
+                'hashrate': 445e9,  # 445 GH/s (BM1397 optimized)
+                'temperature': 49.8,
+                'power': 10.5,  # ~24 J/TH efficiency
+                'fan_speed': 35,
+                'frequency': 450,
+                'voltage': 1180,
+                'status': 'online',
+                'asic_model': 'BM1397',
+                'asic_count': 1,
+                'shares_accepted': 1456,
+                'shares_rejected': 4,
+                'best_difficulty': 1890000,  # 1.89M
+                'uptime_seconds': 201600,
+                'hostname': 'bitaxe-max-1',
+                'firmware': 'v2.4.2',
+                'raw': {'ASICModel': 'BM1397', 'ASICCount': 1, 'frequency': 450, 'coreVoltage': 1180, 'fanSpeedPercent': 35}
+            }
+        },
+        {
+            'ip': '10.0.0.108',
+            'type': 'NerdQAxe+',
+            'model': 'NerdQAxe+',
+            'custom_name': 'Workshop Quad',
+            'status': {
+                'hashrate': 4.2e12,  # 4.2 TH/s (4x BM1370)
+                'temperature': 56.7,
+                'power': 68.5,  # ~16 J/TH efficiency
+                'fan_speed': 58,
+                'frequency': 480,
+                'voltage': 1140,
+                'status': 'online',
+                'asic_model': 'BM1370',
+                'asic_count': 4,
+                'shares_accepted': 4892,
+                'shares_rejected': 8,
+                'best_difficulty': 12800000,  # 12.8M
+                'uptime_seconds': 302400,
+                'hostname': 'nerdqaxe-plus-1',
+                'firmware': 'esp-miner-NERDQAXEPLUS-v1.0.32',
+                'raw': {'ASICModel': 'BM1370', 'ASICCount': 4, 'frequency': 480, 'coreVoltage': 1140, 'fanSpeedPercent': 58}
+            }
+        },
+        {
+            'ip': '10.0.0.109',
+            'type': 'NerdOctaxe',
+            'model': 'NerdOctaxe',
+            'custom_name': 'Server Room Octa',
+            'status': {
+                'hashrate': 8.1e12,  # 8.1 TH/s (8x BM1370)
+                'temperature': 59.3,
+                'power': 135.0,  # ~17 J/TH efficiency
+                'fan_speed': 72,
+                'frequency': 475,
+                'voltage': 1130,
+                'status': 'online',
+                'asic_model': 'BM1370',
+                'asic_count': 8,
+                'shares_accepted': 9245,
+                'shares_rejected': 18,
+                'best_difficulty': 24500000,  # 24.5M
+                'uptime_seconds': 432000,
+                'hostname': 'nerdoctaxe-1',
+                'firmware': 'esp-miner-NERDOCTAXE-v1.1.0',
+                'raw': {'ASICModel': 'BM1370', 'ASICCount': 8, 'frequency': 475, 'coreVoltage': 1130, 'fanSpeedPercent': 72}
+            }
+        },
+        {
+            'ip': '10.0.0.110',
+            'type': 'Antminer S9',
+            'model': 'Antminer S9',
+            'custom_name': 'Garage Legacy Miner',
+            'status': {
+                'hashrate': 13.5e12,  # 13.5 TH/s
+                'temperature': 68.5,
+                'power': 1350,  # ~100 J/TH (old gen)
+                'fan_speed': 4200,
+                'frequency': 650,
+                'voltage': 0,
+                'status': 'online',
+                'asic_model': 'BM1387',
+                'asic_count': 189,  # 3 hashboards x 63 chips
+                'shares_accepted': 28456,
+                'shares_rejected': 45,
+                'best_difficulty': 85000000,  # 85M
+                'uptime_seconds': 864000,
+                'hostname': 'antminer-s9-1',
+                'firmware': 'Antminer-S9-all-201812051512-autofreq-user-Update2UBI-NF-sig.tar.gz',
+                'raw': {'summary': {'SUMMARY': [{'MHS av': 13500000}]}, 'devs': {'DEVS': [{'Temperature': 68.5}]}}
             }
         }
     ]

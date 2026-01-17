@@ -9,7 +9,7 @@ DISCOVERY_TIMEOUT = 2  # seconds per IP
 DISCOVERY_THREADS = 20  # parallel scan threads
 
 # Monitoring settings
-UPDATE_INTERVAL = 15  # seconds between status updates
+UPDATE_INTERVAL = 300  # seconds between status updates (data points stored every 5 min)
 STATUS_TIMEOUT = 3  # seconds per miner status check
 
 # Database

@@ -1,10 +1,12 @@
 // Mining Fleet Manager Dashboard
 const API_BASE = '';
 const UPDATE_INTERVAL = 5000; // 5 seconds
+const CHART_REFRESH_INTERVAL = 30000; // 30 seconds for chart updates
 const OPTIMIZATION_INTERVAL = 300000; // 5 minutes between frequency adjustments
 const MAX_FREQ_STEP = 25; // Maximum frequency increase per step (MHz)
 
 let updateTimer = null;
+let chartRefreshTimer = null;
 let currentTab = 'fleet';
 let minersCache = {}; // Cache for miner data including nicknames
 
@@ -220,7 +222,7 @@ const CHART_DEFAULTS = {
     responsive: true,
     maintainAspectRatio: false,
     animation: { duration: 300, easing: 'easeOutQuart' },
-    interaction: { mode: 'nearest', intersect: true },
+    interaction: { mode: 'nearest', intersect: false },
     plugins: {
         legend: {
             labels: {
@@ -418,8 +420,6 @@ function switchTab(tabName) {
         loadChartsTab();
     } else if (tabName === 'alerts') {
         loadAlertsTab();
-    } else if (tabName === 'weather') {
-        loadWeatherTab();
     } else if (tabName === 'pools') {
         loadPoolsTab();
     } else if (tabName === 'fleet') {
@@ -603,14 +603,30 @@ function createMinerCard(miner) {
     const displayName = miner.custom_name || miner.model || miner.type;
     const isCustomName = !!miner.custom_name;
 
+    // Check if this miner is currently being optimized
+    const isOptimizing = optimizationState.miners[miner.ip]?.active === true;
+    const isOptimized = optimizationState.miners[miner.ip]?.status === 'optimal';
+    const optimizingClass = isOptimizing ? 'optimizing' : (isOptimized ? 'optimized' : '');
+
+    // Build optimization badge HTML
+    let optimizationBadge = '';
+    if (isOptimizing) {
+        optimizationBadge = '<span class="optimization-badge tuning">AUTO-TUNING</span>';
+    } else if (isOptimized) {
+        optimizationBadge = '<span class="optimization-badge optimized">OPTIMIZED</span>';
+    }
+
     return `
-        <div class="miner-card ${offlineClass}" id="miner-card-${miner.ip.replace(/\./g, '-')}" data-ip="${miner.ip}">
+        <div class="miner-card ${offlineClass} ${optimizingClass}" id="miner-card-${miner.ip.replace(/\./g, '-')}" data-ip="${miner.ip}">
             <div class="miner-header">
                 <div class="miner-title" id="miner-title-${miner.ip.replace(/\./g, '-')}" data-ip="${miner.ip}">
                     <span class="miner-name">${displayName}</span>
                     <span class="edit-name-btn" onclick="editMinerName('${miner.ip}', '${(miner.custom_name || '').replace(/'/g, "\\'")}')">✏️</span>
                 </div>
-                <div class="miner-type">${miner.type}</div>
+                <div class="miner-badges">
+                    ${optimizationBadge}
+                    <div class="miner-type">${miner.type}</div>
+                </div>
             </div>
             <div class="miner-ip">${miner.ip}</div>
             <div class="chip-type">Chip Type: ${chipType}</div>
@@ -1275,6 +1291,7 @@ function updateLastUpdateTime() {
 // ============================================================================
 
 // Load Fleet Combined Chart (6 hours, compact view for dashboard)
+// Style: Total hashrate (red with fill), average hashrate (dashed), avg temperature (white/gray)
 async function loadFleetCombinedChart(hours = 6) {
     try {
         // Fetch both temperature and hashrate data in parallel
@@ -1293,179 +1310,141 @@ async function loadFleetCombinedChart(hours = 6) {
 
         const ctx = document.getElementById('fleet-combined-chart').getContext('2d');
 
-        // Group hashrate data by miner IP (per-miner hashrates)
-        const minerHashrateData = {};
+        // Bucket size based on time range for optimal data point density
+        const BUCKET_SIZE = hours <= 1 ? 1 * 60 * 1000 :      // 1 min for 1 hour
+                           hours <= 6 ? 5 * 60 * 1000 :       // 5 min for 6 hours
+                           hours <= 24 ? 15 * 60 * 1000 :     // 15 min for 24 hours
+                           60 * 60 * 1000;                     // 1 hour for longer
+
+        // Aggregate hashrate data by time bucket (sum all miners)
+        const hashrateByTime = {};
         (hashrateResult.data || []).forEach(point => {
             if (point.hashrate_ths != null && point.hashrate_ths > 0 && point.miner_ip && point.miner_ip !== '_total_') {
-                if (!minerHashrateData[point.miner_ip]) {
-                    minerHashrateData[point.miner_ip] = [];
+                const bucketTime = Math.round(new Date(point.timestamp).getTime() / BUCKET_SIZE) * BUCKET_SIZE;
+                if (!hashrateByTime[bucketTime]) {
+                    hashrateByTime[bucketTime] = { sum: 0, byMiner: {} };
                 }
-                minerHashrateData[point.miner_ip].push({
-                    x: new Date(point.timestamp),
-                    y: point.hashrate_ths
-                });
+                // Store by miner IP to avoid double-counting
+                hashrateByTime[bucketTime].byMiner[point.miner_ip] = point.hashrate_ths;
             }
         });
 
-        // Sort each miner's data by timestamp
-        Object.keys(minerHashrateData).forEach(ip => {
-            minerHashrateData[ip].sort((a, b) => a.x - b.x);
+        // Calculate totals from byMiner data
+        Object.values(hashrateByTime).forEach(bucket => {
+            bucket.sum = Object.values(bucket.byMiner).reduce((a, b) => a + b, 0);
         });
 
-        // Calculate total hashrate by aggregating all miners at each time bucket
-        // Round timestamps to nearest 5 minutes so data from different miners aligns
-        const BUCKET_SIZE = 5 * 60 * 1000; // 5 minutes in milliseconds
-        const totalHashrateByTime = {};
-
-        Object.values(minerHashrateData).forEach(minerData => {
-            minerData.forEach(point => {
-                // Round to nearest 5-minute bucket
-                const bucketTime = Math.round(point.x.getTime() / BUCKET_SIZE) * BUCKET_SIZE;
-                if (!totalHashrateByTime[bucketTime]) {
-                    totalHashrateByTime[bucketTime] = { sum: 0, count: 0, miners: new Set() };
-                }
-                // Only count each miner once per bucket (use latest value)
-                const minerId = point.minerId || 'unknown';
-                if (!totalHashrateByTime[bucketTime].miners.has(minerId)) {
-                    totalHashrateByTime[bucketTime].sum += point.y;
-                    totalHashrateByTime[bucketTime].miners.add(minerId);
-                }
-            });
-        });
-
-        // Also track miner IPs for proper aggregation
-        Object.entries(minerHashrateData).forEach(([ip, minerData]) => {
-            minerData.forEach(point => {
-                const bucketTime = Math.round(point.x.getTime() / BUCKET_SIZE) * BUCKET_SIZE;
-                if (totalHashrateByTime[bucketTime]) {
-                    // Re-aggregate properly by miner IP
-                    if (!totalHashrateByTime[bucketTime].byMiner) {
-                        totalHashrateByTime[bucketTime].byMiner = {};
-                    }
-                    totalHashrateByTime[bucketTime].byMiner[ip] = point.y;
-                }
-            });
-        });
-
-        // Recalculate totals from byMiner data
-        Object.values(totalHashrateByTime).forEach(bucket => {
-            if (bucket.byMiner) {
-                bucket.sum = Object.values(bucket.byMiner).reduce((a, b) => a + b, 0);
-            }
-        });
-
-        // Convert total to array and sort by time
-        const totalHashrateData = Object.entries(totalHashrateByTime)
+        // Convert to array and sort
+        const totalHashrateData = Object.entries(hashrateByTime)
             .map(([time, bucket]) => ({ x: new Date(parseInt(time)), y: bucket.sum }))
             .sort((a, b) => a.x - b.x);
 
-        // Calculate adaptive hashrate axis based on TOTAL hashrate
-        let maxHashrate = 0;
-        if (totalHashrateData.length > 0) {
-            maxHashrate = Math.max(...totalHashrateData.map(d => d.y));
-        }
-        if (maxHashrate === 0) maxHashrate = 10;
-        const hashrateAxisMax = getAdaptiveAxisMax(maxHashrate);
-        const unitInfo = getHashrateUnitInfo(hashrateAxisMax);
+        // Calculate average hashrate for the dashed reference line
+        const avgHashrate = totalHashrateData.length > 0
+            ? totalHashrateData.reduce((sum, d) => sum + d.y, 0) / totalHashrateData.length
+            : 0;
 
-        // Group temperature data by miner IP - filter out null/invalid values
-        const minerTempData = {};
+        // Aggregate temperature data by time bucket (average all miners)
+        const tempByTime = {};
         (tempResult.data || []).forEach(point => {
-            if (point.temperature != null && point.temperature > 0 && point.temperature < 300 && point.miner_ip) {
-                if (!minerTempData[point.miner_ip]) {
-                    minerTempData[point.miner_ip] = [];
+            if (point.temperature != null && point.temperature > 0 && point.temperature < 150 && point.miner_ip) {
+                const bucketTime = Math.round(new Date(point.timestamp).getTime() / BUCKET_SIZE) * BUCKET_SIZE;
+                if (!tempByTime[bucketTime]) {
+                    tempByTime[bucketTime] = { sum: 0, count: 0 };
                 }
-                minerTempData[point.miner_ip].push({
-                    x: new Date(point.timestamp),
-                    y: point.temperature
-                });
+                tempByTime[bucketTime].sum += point.temperature;
+                tempByTime[bucketTime].count++;
             }
         });
 
-        // Sort each miner's temperature data by timestamp
-        Object.keys(minerTempData).forEach(ip => {
-            minerTempData[ip].sort((a, b) => a.x - b.x);
-        });
+        // Convert to array with averages
+        const avgTempData = Object.entries(tempByTime)
+            .map(([time, bucket]) => ({ x: new Date(parseInt(time)), y: bucket.sum / bucket.count }))
+            .sort((a, b) => a.x - b.x);
 
-        // Get unique miner IPs from both datasets
-        const minerIPs = [...new Set([...Object.keys(minerHashrateData), ...Object.keys(minerTempData)])];
+        // Calculate axis ranges
+        let maxHashrate = totalHashrateData.length > 0 ? Math.max(...totalHashrateData.map(d => d.y)) : 10;
+        let minHashrate = totalHashrateData.length > 0 ? Math.min(...totalHashrateData.map(d => d.y)) : 0;
+        if (maxHashrate === 0) maxHashrate = 10;
 
-        // Create datasets
+        // Hashrate axis: position data in upper portion of chart
+        const hashrateAxisMin = 0;
+        const hashrateAxisMax = Math.max(maxHashrate * 1.2, 10);
+        const unitInfo = getHashrateUnitInfo(hashrateAxisMax);
+
+        // Temperature axis: position data in lower portion of chart
+        let minTemp = avgTempData.length > 0 ? Math.min(...avgTempData.map(d => d.y)) : 50;
+        let maxTemp = avgTempData.length > 0 ? Math.max(...avgTempData.map(d => d.y)) : 70;
+        const tempRange = Math.max(maxTemp - minTemp, 5);
+        const tempAxisMin = Math.max(0, minTemp - 5);
+        const tempAxisMax = maxTemp + tempRange * 2.5;
+
+        // Create average hashrate reference line data (horizontal line across chart)
+        const avgHashrateLineData = totalHashrateData.length > 0 ? [
+            { x: totalHashrateData[0].x, y: avgHashrate },
+            { x: totalHashrateData[totalHashrateData.length - 1].x, y: avgHashrate }
+        ] : [];
+
+        // Create datasets - clean style matching reference image
         const datasets = [];
 
-        // Add TOTAL hashrate line first (prominent, thicker white line)
+        // 1. Total Hashrate - Red/pink line with filled area
         if (totalHashrateData.length > 0) {
             datasets.push({
                 label: 'Total Hashrate',
                 data: totalHashrateData,
-                borderColor: '#ffffff',
-                backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                borderWidth: 3,
+                borderColor: '#e74c3c',
+                backgroundColor: 'rgba(231, 76, 60, 0.25)',
+                borderWidth: 2,
                 fill: true,
-                tension: 0.3,
+                tension: 0.2,
                 yAxisID: 'y-hashrate',
-                order: 0,
-                pointRadius: 0,
-                pointHoverRadius: 6,
-                pointBackgroundColor: '#ffffff',
-                pointBorderColor: '#000',
-                pointBorderWidth: 2,
-                metricType: 'hashrate'
+                order: 1,
+                pointRadius: 2,
+                pointHoverRadius: 5,
+                pointBackgroundColor: '#e74c3c',
+                pointBorderColor: '#e74c3c',
+                pointBorderWidth: 0
             });
         }
 
-        // Add per-miner hashrate datasets (left y-axis) - COOL colors, solid lines
-        minerIPs.forEach((ip, index) => {
-            const color = CHART_COLORS.hashrateColors[index % CHART_COLORS.hashrateColors.length];
-            const displayName = getMinerDisplayName(ip);
+        // 2. Average Total Hashrate - Dashed red horizontal line
+        if (avgHashrateLineData.length > 0) {
+            datasets.push({
+                label: 'Average Total Hashrate',
+                data: avgHashrateLineData,
+                borderColor: '#e74c3c',
+                backgroundColor: 'transparent',
+                borderWidth: 1.5,
+                borderDash: [6, 4],
+                fill: false,
+                tension: 0,
+                yAxisID: 'y-hashrate',
+                order: 0,
+                pointRadius: 0,
+                pointHoverRadius: 0
+            });
+        }
 
-            if (minerHashrateData[ip] && minerHashrateData[ip].length > 0) {
-                datasets.push({
-                    label: displayName,
-                    data: minerHashrateData[ip],
-                    borderColor: color,
-                    backgroundColor: color + '15',
-                    borderWidth: 2.5,
-                    fill: false,
-                    tension: 0.3,
-                    yAxisID: 'y-hashrate',
-                    order: 1,
-                    pointRadius: 4,
-                    pointHoverRadius: 7,
-                    pointBackgroundColor: color,
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2,
-                    metricType: 'hashrate'
-                });
-            }
-        });
-
-        // Add per-miner temperature datasets (right y-axis) - WARM colors, dashed lines
-        minerIPs.forEach((ip, index) => {
-            const color = CHART_COLORS.tempColors[index % CHART_COLORS.tempColors.length];
-            const displayName = getMinerDisplayName(ip);
-
-            if (minerTempData[ip] && minerTempData[ip].length > 0) {
-                datasets.push({
-                    label: `${displayName} Temp`,
-                    data: minerTempData[ip],
-                    borderColor: color,
-                    backgroundColor: 'transparent',
-                    borderWidth: 2,
-                    fill: false,
-                    tension: 0.3,
-                    yAxisID: 'y-temperature',
-                    order: 2,
-                    pointRadius: 3,
-                    pointHoverRadius: 6,
-                    pointBackgroundColor: color,
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 1,
-                    borderDash: [8, 4],
-                    metricType: 'temperature'
-                });
-            }
-        });
+        // 3. Average Temperature - White/light gray line
+        if (avgTempData.length > 0) {
+            datasets.push({
+                label: 'ASIC Temp',
+                data: avgTempData,
+                borderColor: 'rgba(255, 255, 255, 0.85)',
+                backgroundColor: 'transparent',
+                borderWidth: 1.5,
+                fill: false,
+                tension: 0.2,
+                yAxisID: 'y-temperature',
+                order: 2,
+                pointRadius: 1.5,
+                pointHoverRadius: 4,
+                pointBackgroundColor: 'rgba(255, 255, 255, 0.85)',
+                pointBorderColor: 'rgba(255, 255, 255, 0.85)',
+                pointBorderWidth: 0
+            });
+        }
 
         // Destroy existing chart
         if (fleetCombinedChart) {
@@ -1481,30 +1460,28 @@ async function loadFleetCombinedChart(hours = 6) {
                 maintainAspectRatio: false,
                 animation: false,
                 interaction: {
-                    mode: 'nearest',
-                    intersect: true
+                    mode: 'index',
+                    intersect: false
                 },
                 plugins: {
                     legend: {
                         display: true,
-                        position: 'bottom',
+                        position: 'top',
+                        align: 'center',
                         labels: {
                             color: CHART_COLORS.text,
                             usePointStyle: true,
-                            pointStyle: 'line',
-                            padding: 16,
+                            pointStyle: 'circle',
+                            padding: 20,
                             font: { family: "'Outfit', sans-serif", size: 11, weight: '500' },
-                            filter: function(item) {
-                                // Only show hashrate datasets in legend (not temperature)
-                                return item.text && !item.text.includes('Temp');
-                            }
+                            boxWidth: 8,
+                            boxHeight: 8
                         }
                     },
                     tooltip: {
                         ...CHART_DEFAULTS.plugins.tooltip,
                         callbacks: {
                             title: function(context) {
-                                // Show timestamp
                                 if (context[0] && context[0].parsed.x) {
                                     return new Date(context[0].parsed.x).toLocaleString();
                                 }
@@ -1512,12 +1489,9 @@ async function loadFleetCombinedChart(hours = 6) {
                             },
                             label: function(context) {
                                 let label = context.dataset.label || '';
-                                if (label) {
-                                    label += ': ';
-                                }
+                                if (label) label += ': ';
                                 if (context.parsed.y !== null) {
                                     if (context.dataset.yAxisID === 'y-hashrate') {
-                                        // Use appropriate unit based on magnitude
                                         const val = context.parsed.y;
                                         if (val >= 1000) {
                                             label += (val / 1000).toFixed(2) + ' PH/s';
@@ -1537,30 +1511,41 @@ async function loadFleetCombinedChart(hours = 6) {
                     x: {
                         type: 'time',
                         time: {
-                            unit: 'hour'
+                            unit: hours <= 1 ? 'minute' : hours <= 6 ? 'hour' : hours <= 24 ? 'hour' : 'day',
+                            displayFormats: {
+                                minute: 'h:mm a',
+                                hour: 'ha',
+                                day: 'MMM d'
+                            }
                         },
-                        ticks: { color: CHART_COLORS.text, font: { size: 11 } },
+                        min: new Date(Date.now() - hours * 60 * 60 * 1000),
+                        max: new Date(),
+                        ticks: {
+                            color: CHART_COLORS.text,
+                            font: { size: 10 },
+                            maxTicksLimit: 8
+                        },
                         grid: { color: CHART_COLORS.grid }
                     },
                     'y-hashrate': {
                         type: 'linear',
                         position: 'left',
-                        beginAtZero: true,
+                        min: hashrateAxisMin,
                         max: hashrateAxisMax,
                         title: {
                             display: true,
                             text: unitInfo.label,
-                            color: CHART_COLORS.hashrate.line,
-                            font: { size: 12, weight: '600' }
+                            color: '#e74c3c',
+                            font: { size: 11, weight: '600' }
                         },
                         ticks: {
-                            color: CHART_COLORS.hashrate.line,
-                            font: { size: 11 },
+                            color: '#e74c3c',
+                            font: { size: 10 },
                             callback: function(value) {
                                 if (unitInfo.divisor > 1) {
-                                    return (value / unitInfo.divisor).toFixed(1);
+                                    return (value / unitInfo.divisor).toFixed(1) + ' ' + unitInfo.suffix;
                                 }
-                                return value.toFixed(1);
+                                return value.toFixed(2) + ' TH/s';
                             }
                         },
                         grid: {
@@ -1571,18 +1556,17 @@ async function loadFleetCombinedChart(hours = 6) {
                     'y-temperature': {
                         type: 'linear',
                         position: 'right',
-                        min: 0,
-                        max: 100,
+                        min: tempAxisMin,
+                        max: tempAxisMax,
                         title: {
                             display: true,
-                            text: 'Temperature (°C)',
-                            color: CHART_COLORS.temperature.line,
-                            font: { size: 12, weight: '600' }
+                            text: 'Temperature',
+                            color: 'rgba(255, 255, 255, 0.7)',
+                            font: { size: 11, weight: '600' }
                         },
                         ticks: {
-                            color: CHART_COLORS.temperature.line,
-                            font: { size: 11 },
-                            stepSize: 20,
+                            color: 'rgba(255, 255, 255, 0.7)',
+                            font: { size: 10 },
                             callback: function(value) {
                                 return value + '°C';
                             }
@@ -1709,17 +1693,18 @@ async function loadCombinedChart(hours = 24) {
                     data: minerHashrateData[ip],
                     borderColor: color,
                     backgroundColor: color + '15',
-                    borderWidth: 2.5,
+                    borderWidth: 1.5,
                     fill: false,
                     tension: 0.3,
                     yAxisID: 'y-hashrate',
                     order: 1,
-                    pointRadius: 4,
-                    pointHoverRadius: 7,
+                    pointRadius: 1,
+                    pointHoverRadius: 3,
                     pointBackgroundColor: color,
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2,
-                    metricType: 'hashrate'
+                    pointBorderColor: color,
+                    pointBorderWidth: 0,
+                    metricType: 'hashrate',
+                    spanGaps: false
                 });
             }
         });
@@ -1740,13 +1725,14 @@ async function loadCombinedChart(hours = 24) {
                     tension: 0.3,
                     yAxisID: 'y-temperature',
                     order: 2,
-                    pointRadius: 3,
-                    pointHoverRadius: 6,
+                    pointRadius: 1,
+                    pointHoverRadius: 3,
                     pointBackgroundColor: color,
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 1,
+                    pointBorderColor: color,
+                    pointBorderWidth: 0,
                     borderDash: [8, 4],
-                    metricType: 'temperature'
+                    metricType: 'temperature',
+                    spanGaps: false
                 });
             }
         });
@@ -1766,7 +1752,7 @@ async function loadCombinedChart(hours = 24) {
                 animation: false,
                 interaction: {
                     mode: 'nearest',
-                    intersect: true
+                    intersect: false
                 },
                 plugins: {
                     legend: {
@@ -1810,6 +1796,9 @@ async function loadCombinedChart(hours = 24) {
                         time: {
                             unit: hours <= 24 ? 'hour' : 'day'
                         },
+                        // Set explicit bounds to prevent chart from extending past data
+                        min: new Date(Date.now() - hours * 60 * 60 * 1000),
+                        max: new Date(),
                         ticks: { color: CHART_COLORS.text, font: { size: 11 } },
                         grid: { color: CHART_COLORS.grid }
                     },
@@ -1909,12 +1898,13 @@ async function loadPowerChart(hours = 24) {
                     backgroundColor: CHART_COLORS.power.fill,
                     fill: true,
                     tension: 0.35,
-                    borderWidth: 2.5,
-                    pointRadius: 0,
-                    pointHoverRadius: 5,
+                    borderWidth: 1.5,
+                    pointRadius: 1,
+                    pointHoverRadius: 3,
                     pointBackgroundColor: CHART_COLORS.power.line,
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2
+                    pointBorderColor: CHART_COLORS.power.line,
+                    pointBorderWidth: 0,
+                    spanGaps: false
                 }]
             },
             options: {
@@ -1936,6 +1926,8 @@ async function loadPowerChart(hours = 24) {
                     x: {
                         type: 'time',
                         time: { unit: hours <= 24 ? 'hour' : 'day' },
+                        min: new Date(Date.now() - hours * 60 * 60 * 1000),
+                        max: new Date(),
                         ticks: { color: CHART_COLORS.text, font: { size: 11 } },
                         grid: { color: CHART_COLORS.grid }
                     },
@@ -2006,12 +1998,12 @@ async function loadProfitabilityChart(days = 7) {
                     backgroundColor: CHART_COLORS.profit.fillPositive,
                     fill: true,
                     tension: 0.35,
-                    borderWidth: 2.5,
-                    pointRadius: 0,
-                    pointHoverRadius: 5,
+                    borderWidth: 1.5,
+                    pointRadius: 1,
+                    pointHoverRadius: 3,
                     pointBackgroundColor: CHART_COLORS.profit.positive,
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2,
+                    pointBorderColor: CHART_COLORS.profit.positive,
+                    pointBorderWidth: 0,
                     segment: {
                         borderColor: ctx => {
                             const value = ctx.p1.parsed.y;
@@ -2125,12 +2117,13 @@ async function loadEfficiencyChart(hours = 24) {
                     backgroundColor: CHART_COLORS.efficiency.fill,
                     fill: true,
                     tension: 0.35,
-                    borderWidth: 2.5,
-                    pointRadius: 0,
-                    pointHoverRadius: 5,
+                    borderWidth: 1.5,
+                    pointRadius: 1,
+                    pointHoverRadius: 3,
                     pointBackgroundColor: CHART_COLORS.efficiency.line,
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2
+                    pointBorderColor: CHART_COLORS.efficiency.line,
+                    pointBorderWidth: 0,
+                    spanGaps: false
                 }]
             },
             options: {
@@ -2150,6 +2143,8 @@ async function loadEfficiencyChart(hours = 24) {
                     x: {
                         type: 'time',
                         time: { unit: hours <= 24 ? 'hour' : 'day' },
+                        min: new Date(Date.now() - hours * 60 * 60 * 1000),
+                        max: new Date(),
                         ticks: { color: CHART_COLORS.text, font: { size: 11 } },
                         grid: { color: CHART_COLORS.grid }
                     },
@@ -2353,168 +2348,6 @@ async function testAlert() {
     }
 }
 
-// Load Weather Tab
-async function loadWeatherTab() {
-    await loadCurrentWeather();
-    await loadWeatherForecast();
-    await loadThermalPrediction();
-    await loadOptimalHours();
-}
-
-// Load Current Weather
-async function loadCurrentWeather() {
-    try {
-        const response = await fetch(`${API_BASE}/api/weather/current`);
-        const result = await response.json();
-
-        const container = document.getElementById('current-weather-container');
-
-        if (!result.success) {
-            container.innerHTML = '<p class="loading">Weather not configured or unavailable</p>';
-            return;
-        }
-
-        const weather = result.weather;
-        container.innerHTML = `
-            <div class="weather-card">
-                <div class="weather-stat">
-                    <div class="weather-stat-label">Temperature</div>
-                    <div class="weather-stat-value">${(weather.temp_f ?? 0).toFixed(1)}°F</div>
-                    <div class="weather-stat-description">${(weather.temp_c ?? 0).toFixed(1)}°C</div>
-                </div>
-                <div class="weather-stat">
-                    <div class="weather-stat-label">Feels Like</div>
-                    <div class="weather-stat-value">${(weather.feels_like_f ?? 0).toFixed(1)}°F</div>
-                </div>
-                <div class="weather-stat">
-                    <div class="weather-stat-label">Humidity</div>
-                    <div class="weather-stat-value">${weather.humidity ?? 0}%</div>
-                </div>
-                <div class="weather-stat">
-                    <div class="weather-stat-label">Conditions</div>
-                    <div class="weather-stat-description">${weather.description ?? 'N/A'}</div>
-                </div>
-            </div>
-        `;
-    } catch (error) {
-        console.error('Error loading current weather:', error);
-    }
-}
-
-// Load Weather Forecast
-async function loadWeatherForecast() {
-    try {
-        const response = await fetch(`${API_BASE}/api/weather/forecast?hours=24`);
-        const result = await response.json();
-
-        const container = document.getElementById('weather-forecast-container');
-
-        if (!result.success) {
-            container.innerHTML = '<p class="loading">No forecast available</p>';
-            return;
-        }
-
-        let html = '<div class="forecast-grid">';
-        result.forecast.slice(0, 8).forEach(forecast => {
-            const time = new Date(forecast.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            html += `
-                <div class="forecast-item">
-                    <div class="forecast-time">${time}</div>
-                    <div class="forecast-temp">${(forecast.temp_f ?? 0).toFixed(0)}°F</div>
-                    <div class="forecast-desc">${forecast.description ?? 'N/A'}</div>
-                </div>
-            `;
-        });
-        html += '</div>';
-        container.innerHTML = html;
-    } catch (error) {
-        console.error('Error loading weather forecast:', error);
-    }
-}
-
-// Load Thermal Prediction
-async function loadThermalPrediction() {
-    try {
-        const response = await fetch(`${API_BASE}/api/weather/prediction`);
-        const result = await response.json();
-
-        const container = document.getElementById('thermal-prediction-container');
-
-        if (!result.success) {
-            container.innerHTML = '<p class="loading">No prediction available</p>';
-            return;
-        }
-
-        const pred = result.prediction;
-        const levelClass = pred.critical ? 'critical' : (pred.warning ? 'warning' : '');
-
-        let html = `
-            <div class="prediction-card ${levelClass}">
-                <div class="prediction-message">${pred.message ?? 'N/A'}</div>
-                <div class="prediction-details">
-                    <div class="prediction-detail">
-                        <div class="prediction-detail-label">Current Ambient</div>
-                        <div class="prediction-detail-value">${(pred.current_ambient_f ?? 0).toFixed(1)}°F</div>
-                    </div>
-                    <div class="prediction-detail">
-                        <div class="prediction-detail-label">Forecast Max</div>
-                        <div class="prediction-detail-value">${(pred.forecast_max_f ?? 0).toFixed(1)}°F</div>
-                    </div>
-                    <div class="prediction-detail">
-                        <div class="prediction-detail-label">Estimated Miner Temp</div>
-                        <div class="prediction-detail-value">${(pred.estimated_miner_temp_c ?? 0).toFixed(1)}°C</div>
-                    </div>
-                </div>
-        `;
-
-        if (pred.recommendations && pred.recommendations.length > 0) {
-            html += `
-                <div class="recommendations-list">
-                    <h4>Recommendations</h4>
-                    <ul>
-                        ${pred.recommendations.map(rec => `<li>${rec}</li>`).join('')}
-                    </ul>
-                </div>
-            `;
-        }
-
-        html += '</div>';
-        container.innerHTML = html;
-    } catch (error) {
-        console.error('Error loading thermal prediction:', error);
-    }
-}
-
-// Load Optimal Hours
-async function loadOptimalHours() {
-    try {
-        const response = await fetch(`${API_BASE}/api/weather/optimal-hours?hours=24&max_temp_f=80`);
-        const result = await response.json();
-
-        const container = document.getElementById('optimal-hours-container');
-
-        if (!result.success || result.optimal_periods.length === 0) {
-            container.innerHTML = '<p class="loading">No optimal periods found</p>';
-            return;
-        }
-
-        let html = '<div class="optimal-hours-grid">';
-        result.optimal_periods.forEach(period => {
-            html += `
-                <div class="optimal-period">
-                    <div class="optimal-period-time">${period.start ?? 'N/A'} - ${period.end ?? 'N/A'}</div>
-                    <div class="optimal-period-duration">${period.duration_hours ?? 0} hours</div>
-                    <div class="optimal-period-temp">Avg: ${(period.avg_temp_f ?? 0).toFixed(1)}°F</div>
-                </div>
-            `;
-        });
-        html += '</div>';
-        container.innerHTML = html;
-    } catch (error) {
-        console.error('Error loading optimal hours:', error);
-    }
-}
-
 // Event Listeners for Phase 4 features
 document.getElementById('refresh-charts-btn')?.addEventListener('click', loadChartsTab);
 document.getElementById('chart-time-range')?.addEventListener('change', loadChartsTab);
@@ -2598,21 +2431,30 @@ document.getElementById('telegram-alert-form')?.addEventListener('submit', async
 // Update auto-refresh to include new tabs
 const originalStartAutoRefresh = startAutoRefresh;
 startAutoRefresh = function() {
+    // Main refresh interval (5 seconds) - excludes charts (they have their own interval)
     updateTimer = setInterval(() => {
         if (currentTab === 'fleet') {
             loadDashboard();
         } else if (currentTab === 'energy') {
             loadEnergyTab();
-        } else if (currentTab === 'charts') {
-            loadChartsTab();
         } else if (currentTab === 'alerts') {
             loadAlertsTab();
-        } else if (currentTab === 'weather') {
-            loadWeatherTab();
         } else if (currentTab === 'pools') {
             loadPoolsTab();
         }
     }, UPDATE_INTERVAL);
+
+    // Chart refresh interval (30 seconds) - runs independently
+    chartRefreshTimer = setInterval(() => {
+        // Always refresh fleet chart on dashboard
+        if (currentTab === 'fleet') {
+            loadFleetCombinedChart();
+        }
+        // Refresh charts tab if active
+        if (currentTab === 'charts') {
+            loadChartsTab();
+        }
+    }, CHART_REFRESH_INTERVAL);
 };
 
 // ============================================================================
@@ -2959,6 +2801,9 @@ function populateMinerDetail(ip) {
 
     // Update auto-optimization UI
     updateMinerOptimizeUI();
+
+    // Initialize fan controls
+    initializeFanControls(miner);
 
     // Footer status
     const footerStatus = document.getElementById('modal-uptime-status');
@@ -3566,7 +3411,7 @@ function updateMinerOptimizeUI() {
         // Update button to stop mode
         if (btn) btn.classList.add('stop');
         if (btnText) {
-            btnText.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" width="16" height="16"><rect x="6" y="6" width="12" height="12"/></svg> Stop Optimization`;
+            btnText.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none" class="btn-icon"><rect x="4" y="4" width="16" height="16" rx="2"/></svg> Stop Optimization`;
         }
 
         if (card) card.classList.add('optimizing');
@@ -3888,6 +3733,215 @@ async function applyVoltage() {
         }
     } catch (error) {
         showAlert(`Error applying voltage: ${error.message}`, 'error');
+    }
+}
+
+// ============================================================================
+// FAN CONTROL FUNCTIONS
+// ============================================================================
+
+// Set fan control mode (manual or auto)
+function setFanMode(mode) {
+    const manualBtn = document.getElementById('fan-mode-manual-btn');
+    const autoBtn = document.getElementById('fan-mode-auto-btn');
+    const manualControls = document.getElementById('fan-manual-controls');
+    const autoControls = document.getElementById('fan-auto-controls');
+
+    if (mode === 'auto') {
+        manualBtn?.classList.remove('active');
+        autoBtn?.classList.add('active');
+        if (manualControls) manualControls.style.display = 'none';
+        if (autoControls) autoControls.style.display = 'block';
+    } else {
+        manualBtn?.classList.add('active');
+        autoBtn?.classList.remove('active');
+        if (manualControls) manualControls.style.display = 'block';
+        if (autoControls) autoControls.style.display = 'none';
+    }
+}
+
+// Update fan slider display value
+function updateFanSliderValue() {
+    const slider = document.getElementById('fan-speed-slider');
+    const valueDisplay = document.getElementById('fan-speed-value');
+    if (slider && valueDisplay) {
+        valueDisplay.textContent = `${slider.value}%`;
+    }
+}
+
+// Apply manual fan speed to miner
+async function applyFanSpeed() {
+    const slider = document.getElementById('fan-speed-slider');
+    if (!slider || !currentMinerIP) return;
+
+    const fanSpeed = parseInt(slider.value);
+    const miner = minersCache[currentMinerIP];
+    const minerName = miner?.custom_name || miner?.model || miner?.type || 'this miner';
+
+    try {
+        const response = await fetch(`${API_BASE}/api/miner/${currentMinerIP}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fanSpeed: fanSpeed })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showAlert(`Fan speed set to ${fanSpeed}% for ${minerName}`, 'success');
+
+            // Update the current fan status display
+            document.getElementById('current-fan-status').textContent = `${fanSpeed}%`;
+
+            // Update cache
+            if (minersCache[currentMinerIP]) {
+                if (!minersCache[currentMinerIP].last_status) {
+                    minersCache[currentMinerIP].last_status = {};
+                }
+                minersCache[currentMinerIP].last_status.fan_speed = fanSpeed;
+                if (minersCache[currentMinerIP].last_status.raw) {
+                    minersCache[currentMinerIP].last_status.raw.fanSpeedPercent = fanSpeed;
+                }
+            }
+
+            // Update the miner card in the fleet view
+            updateMinerCardData(currentMinerIP);
+        } else {
+            showAlert(`Failed to set fan speed: ${result.error || 'Unknown error'}`, 'error');
+        }
+    } catch (error) {
+        showAlert(`Error applying fan speed: ${error.message}`, 'error');
+    }
+}
+
+// Apply auto fan control with optimal target temperature for this miner type
+async function applyAutoFan() {
+    if (!currentMinerIP) return;
+
+    const miner = minersCache[currentMinerIP];
+    const minerName = miner?.custom_name || miner?.model || miner?.type || 'this miner';
+    const thermalProfile = getThermalProfile(miner?.type || miner?.model);
+    const targetTemp = thermalProfile.target;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/miner/${currentMinerIP}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                autofanspeed: 1,
+                targetTemp: targetTemp
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showAlert(`Auto fan enabled for ${minerName}. Target: ${targetTemp}°C`, 'success');
+
+            // Update the current fan status display
+            const fanStatus = document.getElementById('current-fan-status');
+            if (fanStatus) fanStatus.textContent = `Auto (${targetTemp}°C)`;
+
+            // Update cache
+            if (minersCache[currentMinerIP]) {
+                if (!minersCache[currentMinerIP].last_status) {
+                    minersCache[currentMinerIP].last_status = {};
+                }
+                if (!minersCache[currentMinerIP].last_status.raw) {
+                    minersCache[currentMinerIP].last_status.raw = {};
+                }
+                minersCache[currentMinerIP].last_status.raw.autofanspeed = 1;
+                minersCache[currentMinerIP].last_status.raw.targetTemp = targetTemp;
+            }
+        } else {
+            showAlert(`Failed to enable auto fan: ${result.error || 'Unknown error'}`, 'error');
+        }
+    } catch (error) {
+        showAlert(`Error enabling auto fan: ${error.message}`, 'error');
+    }
+}
+
+// Thermal profiles for different miner types (based on thermal.py research)
+// target = middle-upper of optimal zone (70% between optimal and warning)
+const THERMAL_PROFILES = {
+    'BitAxe': { optimal: 60, warning: 65, critical: 68, target: 63 },
+    'BitAxe Ultra': { optimal: 60, warning: 65, critical: 68, target: 63 },
+    'BitAxe Max': { optimal: 60, warning: 65, critical: 68, target: 63 },
+    'BitAxe Supra': { optimal: 60, warning: 65, critical: 68, target: 63 },
+    'BitAxe Gamma': { optimal: 60, warning: 65, critical: 68, target: 63 },
+    'NerdAxe': { optimal: 60, warning: 65, critical: 68, target: 63 },
+    'NerdQAxe+': { optimal: 58, warning: 63, critical: 66, target: 61 },
+    'NerdQAxe++': { optimal: 58, warning: 63, critical: 66, target: 61 },
+    'NerdOctaxe': { optimal: 55, warning: 60, critical: 64, target: 58 },
+    'Antminer': { optimal: 65, warning: 75, critical: 80, target: 72 },
+    'Antminer S9': { optimal: 65, warning: 75, critical: 80, target: 72 },
+    'Antminer S19': { optimal: 65, warning: 75, critical: 80, target: 72 },
+    'Whatsminer': { optimal: 65, warning: 75, critical: 80, target: 72 },
+    'Avalon': { optimal: 65, warning: 75, critical: 80, target: 72 },
+    'default': { optimal: 60, warning: 65, critical: 70, target: 63 }
+};
+
+// Get thermal profile for a miner type
+function getThermalProfile(minerType) {
+    if (!minerType) return THERMAL_PROFILES['default'];
+
+    // Try exact match first
+    if (THERMAL_PROFILES[minerType]) {
+        return THERMAL_PROFILES[minerType];
+    }
+
+    // Try partial match
+    const typeUpper = minerType.toUpperCase();
+    if (typeUpper.includes('NERDOCTAXE')) return THERMAL_PROFILES['NerdOctaxe'];
+    if (typeUpper.includes('NERDQAXE')) return THERMAL_PROFILES['NerdQAxe+'];
+    if (typeUpper.includes('NERDAXE')) return THERMAL_PROFILES['NerdAxe'];
+    if (typeUpper.includes('BITAXE')) return THERMAL_PROFILES['BitAxe'];
+    if (typeUpper.includes('ANTMINER')) return THERMAL_PROFILES['Antminer'];
+    if (typeUpper.includes('WHATSMINER')) return THERMAL_PROFILES['Whatsminer'];
+    if (typeUpper.includes('AVALON')) return THERMAL_PROFILES['Avalon'];
+
+    return THERMAL_PROFILES['default'];
+}
+
+// Initialize fan controls when modal opens
+function initializeFanControls(miner) {
+    const status = miner?.last_status || {};
+    const raw = status.raw || {};
+
+    // Set current fan speed
+    const currentFanStatus = document.getElementById('current-fan-status');
+    if (currentFanStatus) {
+        if (raw.autofanspeed === 1) {
+            currentFanStatus.textContent = `Auto (${raw.targetTemp || 60}°C)`;
+        } else {
+            const fanSpeed = status.fan_speed ?? raw.fanSpeedPercent ?? '--';
+            currentFanStatus.textContent = `${fanSpeed}%`;
+        }
+    }
+
+    // Set slider to current fan speed
+    const slider = document.getElementById('fan-speed-slider');
+    const valueDisplay = document.getElementById('fan-speed-value');
+    if (slider && valueDisplay) {
+        const fanSpeed = status.fan_speed ?? raw.fanSpeedPercent ?? 50;
+        slider.value = Math.max(20, fanSpeed); // Ensure minimum of 20
+        valueDisplay.textContent = `${Math.max(20, fanSpeed)}%`;
+    }
+
+    // Get thermal profile for this miner type
+    const thermalProfile = getThermalProfile(miner?.type || miner?.model);
+
+    // Set the auto fan target temperature display
+    const targetTempDisplay = document.getElementById('auto-fan-target-temp');
+    if (targetTempDisplay) {
+        targetTempDisplay.textContent = `${thermalProfile.target}°C`;
+    }
+
+    // Set mode based on current state
+    if (raw.autofanspeed === 1) {
+        setFanMode('auto');
+    } else {
+        setFanMode('manual');
     }
 }
 
