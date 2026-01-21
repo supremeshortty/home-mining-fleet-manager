@@ -717,6 +717,84 @@ class ProfitabilityCalculator:
 
         return btc_per_day
 
+    def calculate_solo_odds(self, hashrate_hs: float, difficulty: float = None) -> dict:
+        """
+        Calculate solo mining odds - the probability of finding a block.
+
+        This uses the same formula as solochance.com:
+        - Chance per block = (hashrate_hs * 600) / (difficulty * 2^32)
+        - Chance per day = (hashrate_hs * 86400) / (difficulty * 2^32)
+        - Time estimate = 1 / chance_per_day (in days, converted to years)
+
+        Args:
+            hashrate_hs: Hashrate in H/s (hashes per second)
+            difficulty: Network difficulty (fetched if not provided)
+
+        Returns:
+            Dictionary with solo mining odds metrics (exact numbers, no rounding)
+        """
+        if difficulty is None:
+            difficulty = self.btc_fetcher.get_network_difficulty()
+            if difficulty is None:
+                return {'error': 'Unable to fetch network difficulty'}
+
+        if hashrate_hs <= 0:
+            return {
+                'hashrate_hs': 0,
+                'difficulty': difficulty,
+                'chance_per_block': 0,
+                'chance_per_block_odds': 0,
+                'chance_per_block_display': 'N/A',
+                'chance_per_day': 0,
+                'chance_per_day_odds': 0,
+                'chance_per_day_display': 'N/A',
+                'time_to_block_days': float('inf'),
+                'time_to_block_years': float('inf'),
+                'time_estimate_display': 'Never'
+            }
+
+        # Chance per block: probability during one 10-minute block period
+        # Formula: (hashrate_hs * 600) / (difficulty * 2^32)
+        chance_per_block = (hashrate_hs * 600) / (difficulty * (2**32))
+        chance_per_block_odds = int(1 / chance_per_block) if chance_per_block > 0 else float('inf')
+
+        # Chance per day: probability over 24 hours (144 blocks)
+        # Formula: (hashrate_hs * 86400) / (difficulty * 2^32)
+        chance_per_day = (hashrate_hs * 86400) / (difficulty * (2**32))
+        chance_per_day_odds = int(1 / chance_per_day) if chance_per_day > 0 else float('inf')
+
+        # Time to block in days and years
+        time_to_block_days = 1 / chance_per_day if chance_per_day > 0 else float('inf')
+        time_to_block_years = time_to_block_days / 365
+
+        # Format displays with commas (exact numbers, no abbreviation)
+        chance_per_block_display = f"1 in {chance_per_block_odds:,}"
+        chance_per_day_display = f"1 in {chance_per_day_odds:,}"
+
+        # Format time estimate (exact number with commas)
+        if time_to_block_years >= 1:
+            time_estimate_display = f"{int(time_to_block_years):,} years"
+        elif time_to_block_days >= 30:
+            time_estimate_display = f"{int(time_to_block_days / 30):,} months"
+        elif time_to_block_days >= 1:
+            time_estimate_display = f"{int(time_to_block_days):,} days"
+        else:
+            time_estimate_display = f"{int(time_to_block_days * 24):,} hours"
+
+        return {
+            'hashrate_hs': hashrate_hs,
+            'difficulty': difficulty,
+            'chance_per_block': chance_per_block,
+            'chance_per_block_odds': chance_per_block_odds,
+            'chance_per_block_display': chance_per_block_display,
+            'chance_per_day': chance_per_day,
+            'chance_per_day_odds': chance_per_day_odds,
+            'chance_per_day_display': chance_per_day_display,
+            'time_to_block_days': time_to_block_days,
+            'time_to_block_years': time_to_block_years,
+            'time_estimate_display': time_estimate_display
+        }
+
     def calculate_power_at_frequency(self, max_power_watts: float, target_frequency: int,
                                      max_frequency: int = 600) -> float:
         """

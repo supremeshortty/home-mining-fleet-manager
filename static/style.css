@@ -508,6 +508,213 @@ header {
     color: var(--amber);
 }
 
+/* Donate Button */
+.donate-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: linear-gradient(135deg, var(--bitcoin), #ffa500);
+    border: none;
+    border-radius: var(--radius-md);
+    color: #000;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-base);
+}
+
+.donate-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(247, 147, 26, 0.4);
+}
+
+.donate-btn svg {
+    width: 18px;
+    height: 18px;
+    stroke: #000;
+}
+
+/* Donation Modal - Power Bill Style */
+.donation-modal-content {
+    background: var(--space);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-xl);
+    padding: 24px;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: var(--shadow-xl);
+}
+
+.bill-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.bill-company {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.bill-logo {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--bitcoin), #ffa500);
+    border-radius: var(--radius-md);
+}
+
+.bill-logo svg {
+    width: 24px;
+    height: 24px;
+    stroke: #000;
+}
+
+.bill-company-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.bill-company-name {
+    font-family: 'Chakra Petch', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-bright);
+}
+
+.bill-account {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.bill-status {
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.bill-status.past-due {
+    background: rgba(255, 82, 82, 0.15);
+    color: #ff5252;
+    border: 1px solid rgba(255, 82, 82, 0.3);
+}
+
+.bill-details {
+    margin-bottom: 24px;
+}
+
+.bill-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+}
+
+.bill-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.bill-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--text-bright);
+}
+
+.bill-total {
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border-subtle);
+}
+
+.bill-total .bill-label {
+    color: #ff5252;
+    font-weight: 600;
+}
+
+.bill-sats {
+    color: var(--bitcoin);
+    font-weight: 700;
+}
+
+.bill-subsidize {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.subsidize-label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.subsidize-handle {
+    display: block;
+    font-family: 'Chakra Petch', sans-serif;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-bright);
+}
+
+.subsidize-highlight {
+    display: block;
+    font-family: 'Chakra Petch', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--bitcoin);
+}
+
+.bill-qr-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 16px;
+    cursor: pointer;
+    transition: transform var(--transition-fast);
+}
+
+.bill-qr-container:hover {
+    transform: scale(1.02);
+}
+
+.bill-qr {
+    display: block;
+    width: 150px;
+    height: 150px;
+    padding: 12px;
+    background: #1e1e2e;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-subtle);
+}
+
+.bill-footer {
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.lightning-bolt {
+    color: var(--bitcoin);
+}
+
+.bill-dot {
+    opacity: 0.5;
+    margin: 0 4px;
+}
+
 /* ============================================================================
    MAIN CONTENT AREA
    ============================================================================ */
@@ -647,6 +854,61 @@ main {
 .stat-value.success { color: var(--success); }
 .stat-value.warning { color: var(--warning); }
 .stat-value.danger { color: var(--danger); }
+
+/* Solo mining odds display */
+.solo-odds-details {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.solo-odds-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.solo-odds-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.solo-odds-value {
+    font-family: 'Chakra Petch', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-bright);
+}
+
+.stat-hint {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    font-size: 0.6rem;
+    background: var(--space-light);
+    border: 1px solid var(--border-default);
+    border-radius: 50%;
+    color: var(--text-muted);
+    cursor: help;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.stat-hint:hover {
+    background: var(--space-lighter);
+    border-color: var(--cyan);
+    color: var(--cyan);
+}
+
+/* Solo odds in miner modal */
+.solo-odds-item .live-value {
+    font-weight: 600;
+}
 
 /* ============================================================================
    TYPOGRAPHY

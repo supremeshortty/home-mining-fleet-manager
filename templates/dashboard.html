@@ -133,10 +133,12 @@
                 <span id="last-update" class="status-text">Last update: Never</span>
             </div>
             <div class="header-right">
-                <div class="author-badge">
-                    <div class="author-label">Created by</div>
-                    <div class="author-handle">@satman</div>
-                </div>
+                <button class="donate-btn" onclick="openDonationModal()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                    <span>Donate</span>
+                </button>
             </div>
         </header>
 
@@ -207,6 +209,26 @@
                     <div class="stat-card">
                         <div class="stat-label">Average Chip Temperature</div>
                         <div class="stat-value" id="avg-temp">0°C</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">
+                            Solo Mining Odds
+                            <span class="stat-hint" title="Your chance of solo mining a block based on current fleet hashrate">?</span>
+                        </div>
+                        <div class="solo-odds-details">
+                            <div class="solo-odds-row">
+                                <span class="solo-odds-label">Chance per block:</span>
+                                <span class="solo-odds-value" id="solo-odds-block">--</span>
+                            </div>
+                            <div class="solo-odds-row">
+                                <span class="solo-odds-label">Chance per day:</span>
+                                <span class="solo-odds-value" id="solo-odds-day">--</span>
+                            </div>
+                            <div class="solo-odds-row">
+                                <span class="solo-odds-label">Time estimate:</span>
+                                <span class="solo-odds-value" id="solo-odds-time">--</span>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -922,6 +944,18 @@
                                 <span class="live-label">WiFi Signal</span>
                                 <span class="live-value" id="modal-wifi-signal">-65 dBm</span>
                             </div>
+                            <div class="live-item solo-odds-item">
+                                <span class="live-label">Per Block</span>
+                                <span class="live-value" id="modal-solo-block">--</span>
+                            </div>
+                            <div class="live-item solo-odds-item">
+                                <span class="live-label">Per Day</span>
+                                <span class="live-value" id="modal-solo-day">--</span>
+                            </div>
+                            <div class="live-item solo-odds-item">
+                                <span class="live-label">Time Est.</span>
+                                <span class="live-value" id="modal-solo-time">--</span>
+                            </div>
                         </div>
                     </div>
 
@@ -1208,6 +1242,60 @@
         </div>
     </div>
 
+    <!-- Donation Modal -->
+    <div id="donation-modal" class="modal-overlay" style="display: none;" onclick="closeDonationModal(event)">
+        <div class="donation-modal-content" onclick="event.stopPropagation()">
+            <!-- Power Bill Header -->
+            <div class="bill-header">
+                <div class="bill-company">
+                    <div class="bill-logo">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                        </svg>
+                    </div>
+                    <div class="bill-company-info">
+                        <span class="bill-company-name">SATMAN POWER CO.</span>
+                        <span class="bill-account">Account #21000000</span>
+                    </div>
+                </div>
+                <div class="bill-status past-due">PAST DUE</div>
+            </div>
+
+            <!-- Bill Details -->
+            <div class="bill-details">
+                <div class="bill-row">
+                    <span class="bill-label">ASIC Fleet (<span id="donation-miner-count">0</span> miners)</span>
+                    <span class="bill-value"><span id="donation-power">0</span> W</span>
+                </div>
+                <div class="bill-row">
+                    <span class="bill-label">24/7 Operation</span>
+                    <span class="bill-value">720 hrs</span>
+                </div>
+                <div class="bill-row bill-total">
+                    <span class="bill-label">Amount Due:</span>
+                    <span class="bill-value bill-sats">&infin; sats</span>
+                </div>
+            </div>
+
+            <!-- Subsidize Section -->
+            <div class="bill-subsidize">
+                <span class="subsidize-label">Subsidize</span>
+                <span class="subsidize-handle">@satman's</span>
+                <span class="subsidize-highlight">electric bill</span>
+            </div>
+
+            <!-- QR Code -->
+            <div class="bill-qr-container" onclick="copyLightningAddress()">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=lightning:amberloin26@primal.net&bgcolor=1e1e2e&color=ffffff" alt="Lightning QR" class="bill-qr">
+            </div>
+
+            <!-- Footer -->
+            <div class="bill-footer">
+                <span class="lightning-bolt">&#9889;</span> Lightning Network <span class="bill-dot">•</span> Any amount helps
+            </div>
+        </div>
+    </div>
+
     <!-- Chart.js Library -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
@@ -1226,6 +1314,46 @@
                 document.querySelector(`.tab-btn[data-tab="${tab}"]`)?.classList.add('active');
                 if (typeof switchTab === 'function') switchTab(tab);
             });
+        });
+
+        // Donation modal functions
+        function openDonationModal() {
+            const modal = document.getElementById('donation-modal');
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+
+            // Update stats from dashboard
+            const minerCount = document.getElementById('total-miners')?.textContent || '0';
+            const totalPower = document.getElementById('total-power')?.textContent?.replace(' W', '') || '0';
+            document.getElementById('donation-miner-count').textContent = minerCount;
+            document.getElementById('donation-power').textContent = totalPower;
+        }
+
+        function closeDonationModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            const modal = document.getElementById('donation-modal');
+            modal.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        function copyLightningAddress() {
+            const address = 'amberloin26@primal.net';
+            navigator.clipboard.writeText(address).then(() => {
+                showAlert('Lightning address copied!', 'success');
+            }).catch(() => {
+                const textArea = document.createElement('textarea');
+                textArea.value = address;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showAlert('Lightning address copied!', 'success');
+            });
+        }
+
+        // Close on escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeDonationModal({target: {}, currentTarget: {}});
         });
     </script>
 </body>

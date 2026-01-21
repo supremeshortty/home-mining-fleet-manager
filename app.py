@@ -1704,6 +1704,65 @@ def get_halving_info():
         }), 500
 
 
+@app.route('/api/solo-chance', methods=['GET'])
+def get_solo_chance():
+    """
+    Calculate solo mining odds for the fleet or a specific miner.
+
+    Query params:
+        ip (optional): Miner IP to get odds for specific miner
+        hashrate (optional): Custom hashrate in H/s to calculate odds for
+
+    Returns odds data including:
+        - odds_display: "1 in X" format
+        - time_to_block_display: Human readable time estimate
+        - daily_chance_percent: Probability as percentage
+    """
+    try:
+        ip = request.args.get('ip')
+        custom_hashrate = request.args.get('hashrate', type=float)
+
+        if custom_hashrate is not None:
+            # Calculate for custom hashrate value
+            hashrate_hs = custom_hashrate
+        elif ip:
+            # Calculate for specific miner
+            with fleet.lock:
+                miner = fleet.miners.get(ip)
+                if not miner:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Miner {ip} not found'
+                    }), 404
+
+                status = miner.last_status or {}
+                hashrate_hs = status.get('hashrate', 0)
+        else:
+            # Calculate for entire fleet
+            stats = fleet.get_fleet_stats()
+            hashrate_hs = stats.get('total_hashrate', 0)
+
+        # Calculate solo mining odds
+        odds = fleet.profitability_calc.calculate_solo_odds(hashrate_hs)
+
+        if 'error' in odds:
+            return jsonify({
+                'success': False,
+                'error': odds['error']
+            }), 500
+
+        return jsonify({
+            'success': True,
+            'solo_chance': odds
+        })
+    except Exception as e:
+        logger.error(f"Error calculating solo chance: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/energy/projected-cost', methods=['GET'])
 def get_projected_daily_cost():
     """

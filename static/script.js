@@ -599,7 +599,8 @@ async function loadDashboard() {
         await Promise.all([
             loadStats(),
             loadMiners(),
-            loadFleetCombinedChart(fleetChartHours)
+            loadFleetCombinedChart(fleetChartHours),
+            loadSoloOdds()
         ]);
         updateLastUpdateTime();
 
@@ -644,6 +645,60 @@ async function loadStats() {
 
     } catch (error) {
         console.error('Error loading stats:', error);
+    }
+}
+
+// Load fleet solo mining odds
+async function loadSoloOdds() {
+    try {
+        const response = await fetch(`${API_BASE}/api/solo-chance`);
+        const data = await response.json();
+
+        if (data.success && data.solo_chance) {
+            const odds = data.solo_chance;
+            const blockEl = document.getElementById('solo-odds-block');
+            const dayEl = document.getElementById('solo-odds-day');
+            const timeEl = document.getElementById('solo-odds-time');
+
+            if (blockEl) {
+                blockEl.textContent = odds.chance_per_block_display || '--';
+            }
+            if (dayEl) {
+                dayEl.textContent = odds.chance_per_day_display || '--';
+            }
+            if (timeEl) {
+                timeEl.textContent = odds.time_estimate_display || '--';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading solo odds:', error);
+    }
+}
+
+// Load solo odds for a specific miner (used in miner modal)
+async function loadMinerSoloOdds(ip) {
+    try {
+        const response = await fetch(`${API_BASE}/api/solo-chance?ip=${encodeURIComponent(ip)}`);
+        const data = await response.json();
+
+        if (data.success && data.solo_chance) {
+            const odds = data.solo_chance;
+            const blockEl = document.getElementById('modal-solo-block');
+            const dayEl = document.getElementById('modal-solo-day');
+            const timeEl = document.getElementById('modal-solo-time');
+
+            if (blockEl) {
+                blockEl.textContent = odds.chance_per_block_display || '--';
+            }
+            if (dayEl) {
+                dayEl.textContent = odds.chance_per_day_display || '--';
+            }
+            if (timeEl) {
+                timeEl.textContent = odds.time_estimate_display || '--';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading miner solo odds:', error);
     }
 }
 
@@ -2182,9 +2237,11 @@ async function loadFleetCombinedChart(hours = 6) {
         let minHashrate = totalHashrateData.length > 0 ? Math.min(...totalHashrateData.map(d => d.y)) : 0;
         if (maxHashrate === 0) maxHashrate = 10;
 
-        // Hashrate axis: position data in upper portion of chart
-        const hashrateAxisMin = 0;
-        const hashrateAxisMax = Math.max(maxHashrate * 1.2, 10);
+        // Hashrate axis: adaptive range based on data to show fluctuations clearly
+        const hashrateRange = maxHashrate - minHashrate;
+        const hashratePadding = Math.max(hashrateRange * 0.15, maxHashrate * 0.02); // 15% of range or 2% of max
+        const hashrateAxisMin = Math.max(0, minHashrate - hashratePadding);
+        const hashrateAxisMax = maxHashrate + hashratePadding;
         const unitInfo = getHashrateUnitInfo(hashrateAxisMax);
 
         // Temperature axis: position data in lower portion of chart
@@ -2466,16 +2523,25 @@ async function loadCombinedChart(hours = 24) {
             minerHashrateData[ip].sort((a, b) => a.x - b.x);
         });
 
-        // Calculate adaptive hashrate axis based on individual miner max
+        // Calculate adaptive hashrate axis based on individual miner data
         let maxHashrate = 0;
+        let minHashrate = Infinity;
         Object.values(minerHashrateData).forEach(data => {
             if (data.length > 0) {
                 const minerMax = Math.max(...data.map(d => d.y));
+                const minerMin = Math.min(...data.map(d => d.y));
                 if (minerMax > maxHashrate) maxHashrate = minerMax;
+                if (minerMin < minHashrate) minHashrate = minerMin;
             }
         });
         if (maxHashrate === 0) maxHashrate = 10;
-        const hashrateAxisMax = getAdaptiveAxisMax(maxHashrate);
+        if (minHashrate === Infinity) minHashrate = 0;
+
+        // Adaptive axis range to show fluctuations clearly
+        const hashrateRange = maxHashrate - minHashrate;
+        const hashratePadding = Math.max(hashrateRange * 0.15, maxHashrate * 0.02); // 15% of range or 2% of max
+        const hashrateAxisMin = Math.max(0, minHashrate - hashratePadding);
+        const hashrateAxisMax = maxHashrate + hashratePadding;
         const unitInfo = getHashrateUnitInfo(hashrateAxisMax);
 
         // Group temperature data by miner IP - filter out null/invalid values
@@ -2626,7 +2692,7 @@ async function loadCombinedChart(hours = 24) {
                     'y-hashrate': {
                         type: 'linear',
                         position: 'left',
-                        beginAtZero: true,
+                        min: hashrateAxisMin,
                         max: hashrateAxisMax,
                         title: {
                             display: true,
@@ -3730,6 +3796,9 @@ function populateMinerDetail(ip) {
         footerStatus.textContent = isOnline ? (uptime > 86400 ? 'Rock solid' : 'Running') : 'Offline';
         footerStatus.style.color = isOnline ? 'var(--success)' : 'var(--danger)';
     }
+
+    // Load solo mining odds for this miner
+    loadMinerSoloOdds(ip);
 }
 
 // Format hashrate for modal display (returns value and unit separately)
