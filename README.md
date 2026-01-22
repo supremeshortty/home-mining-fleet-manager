@@ -98,25 +98,177 @@ A production-ready Bitcoin mining fleet management dashboard for home-scale mine
 
 ## Quick Start
 
-### Installation
+### Option 1: Raspberry Pi (Recommended for 24/7 Operation)
+
+Perfect for running continuously without keeping your computer on.
+
+#### 1. Flash SD Card (New Raspberry Pi)
+
+**Download Raspberry Pi Imager:**
+- Mac/PC: https://www.raspberrypi.com/software/
+- Or use command: `brew install --cask raspberry-pi-imager` (Mac)
+
+**Flash the SD card:**
+1. Insert SD card into your computer (16GB+ recommended)
+2. Open Raspberry Pi Imager
+3. Click **"Choose Device"** → Select your Raspberry Pi model (Pi 3, 4, or 5)
+4. Click **"Choose OS"** → Select "Raspberry Pi OS (64-bit)" recommended
+5. Click **"Choose Storage"** → Select your SD card
+6. Click **"Next"** → Click **"Edit Settings"**
+
+**Configure settings (IMPORTANT):**
+- **General Tab:**
+  - Set hostname: `raspberrypi` (or your choice)
+  - Set username and password (remember these!)
+  - Configure WiFi SSID and password
+  - Set locale settings (timezone, keyboard)
+- **Services Tab:**
+  - ✅ Enable SSH
+  - Use password authentication
+- Click **"Save"** → Click **"Yes"** to apply settings
+- Click **"Yes"** to erase and write to SD card
+
+**Wait for completion** (5-10 minutes), then eject the SD card.
+
+#### 2. Boot Raspberry Pi
+
+1. Insert SD card into Raspberry Pi
+2. Connect power supply
+3. Wait 1-2 minutes for first boot
+4. Pi will automatically connect to WiFi
+
+#### 3. Find Your Raspberry Pi's IP Address
+
+**From your Mac/PC terminal:**
+```bash
+# Method 1: Try default hostname
+ping raspberrypi.local
+
+# Method 2: Scan your network
+nmap -sn 192.168.1.0/24  # Adjust subnet to match your network
+
+# Method 3: Check your router's DHCP client list
+```
+
+#### 4. Transfer Files to Raspberry Pi
+
+**Clone or download this repository on your Mac/PC, then:**
 
 ```bash
-git clone https://github.com/supremeshortty/home-mining-fleet-manager.git
-cd home-mining-fleet-manager
+# Navigate to the project directory
+cd /path/to/dirtysats
+
+# Transfer files to Pi (replace with your Pi's IP)
+scp -r * username@your-pi-ip:~/home-mining-fleet-manager
+```
+
+#### 5. Install on Raspberry Pi
+
+**SSH into your Pi:**
+```bash
+ssh username@your-pi-ip
+```
+
+**Run the installation script:**
+```bash
+cd ~/home-mining-fleet-manager
+./install-raspberry-pi.sh
+```
+
+The script will:
+- ✅ Install Python dependencies
+- ✅ Create virtual environment
+- ✅ Initialize database
+- ✅ Set up systemd service
+- ✅ Enable auto-start on boot
+- ✅ Configure log rotation
+- ✅ Start the service
+
+**That's it!** The fleet manager is now running 24/7.
+
+#### 6. Access Your Dashboard
+
+From any device on your network:
+```
+http://your-pi-ip:5001
+```
+
+#### Managing the Service
+
+```bash
+# Check status
+sudo systemctl status fleet-manager
+
+# View live logs
+sudo journalctl -u fleet-manager -f
+
+# Restart service
+sudo systemctl restart fleet-manager
+
+# Stop service
+sudo systemctl stop fleet-manager
+```
+
+### Option 2: Laptop/Desktop (Quick Testing)
+
+For running on your Mac/PC (not 24/7).
+
+**Installation:**
+
+```bash
+git clone https://github.com/yourusername/dirtysats.git
+cd dirtysats
 pip install -r requirements.txt
 ```
 
-### Running
+**Running:**
 
 ```bash
 python3 app.py
 ```
 
-### Access Dashboard
+**Access Dashboard:**
 
 Open your browser to: **http://localhost:5001**
 
 Or from another device: **http://<your-ip>:5001**
+
+## Updating Your Raspberry Pi
+
+After making changes to the code on your development machine, push updates to your Pi:
+
+### Setup Credentials (One-Time)
+
+```bash
+cd /path/to/dirtysats
+cp pi-config.sh.template pi-config.sh
+nano pi-config.sh  # Add your Pi's credentials
+```
+
+**Your `pi-config.sh` will contain:**
+```bash
+PI_USER="your_username"
+PI_HOST="your_pi_ip"
+PI_PASSWORD="your_password"
+PI_DIR="~/home-mining-fleet-manager"
+```
+
+**🔒 Security Note:** `pi-config.sh` is excluded from git and will never be committed to GitHub.
+
+### Push Updates
+
+**Update Pi from your Mac/PC:**
+```bash
+./update-pi.sh
+```
+
+This will:
+- Transfer all files to the Pi
+- Update dependencies if needed
+- Restart the service
+- Verify it's running
+
+See `UPDATE_WORKFLOW.md` for detailed update instructions.
 
 ## Configuration
 
@@ -239,6 +391,18 @@ DirtySats/
 - **Custom Thermal Profile**: Optimized for 75°C target temperature (manufacturer spec)
 - **Auto-Tuning**: Thermal management targets 75°C optimal, 85°C warning, 92°C critical
 - **Proper Detection**: Nano 3S now correctly identified instead of generic "Antminer" label
+
+## Documentation
+
+Detailed guides available:
+
+- **[RASPBERRY_PI_SETUP.md](RASPBERRY_PI_SETUP.md)** - Complete Raspberry Pi setup and management guide
+- **[UPDATE_WORKFLOW.md](UPDATE_WORKFLOW.md)** - How to keep your Pi updated with latest code
+- **[SECURITY.md](SECURITY.md)** - Security best practices and credential management
+- **[CREDENTIALS_SETUP.md](CREDENTIALS_SETUP.md)** - Setting up secure credential configuration
+- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Quick command reference
+- **[QUICKSTART.md](QUICKSTART.md)** - 5-minute quick start guide
+- **[TELEGRAM_SETUP.md](TELEGRAM_SETUP.md)** - Setting up Telegram alerts
 
 ## Troubleshooting
 

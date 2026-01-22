@@ -1,0 +1,21 @@
+[Unit]
+Description=Bitcoin Mining Fleet Manager (DirtySats)
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/home-mining-fleet-manager
+Environment="PATH=/home/pi/home-mining-fleet-manager/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/pi/home-mining-fleet-manager/venv/bin/python3 app.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/pi/home-mining-fleet-manager/logs/fleet-manager.log
+StandardError=append:/home/pi/home-mining-fleet-manager/logs/fleet-manager.error.log
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

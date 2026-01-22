@@ -5,3 +5,7 @@ __pycache__/
 venv/
 *.log
 .env
+
+# Raspberry Pi credentials (DO NOT COMMIT)
+pi-config.sh
+*.backup

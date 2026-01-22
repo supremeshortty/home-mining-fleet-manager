@@ -1,0 +1,26 @@
+#!/bin/bash
+# Raspberry Pi Configuration Template
+#
+# IMPORTANT:
+# 1. Copy this file to: pi-config.sh
+# 2. Fill in your actual credentials in pi-config.sh
+# 3. Never commit pi-config.sh to git (it's in .gitignore)
+#
+# Usage:
+#   cp pi-config.sh.template pi-config.sh
+#   nano pi-config.sh  # Edit with your credentials
+#
+
+# Raspberry Pi SSH credentials
+PI_USER="your_pi_username"
+PI_HOST="your_pi_ip_address"
+PI_PASSWORD="your_pi_password"
+
+# Installation directory on the Pi
+PI_DIR="~/home-mining-fleet-manager"
+
+# Example:
+# PI_USER="pi"
+# PI_HOST="192.168.1.100"
+# PI_PASSWORD="your_secure_password"
+# PI_DIR="~/home-mining-fleet-manager"
