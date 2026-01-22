@@ -710,7 +710,22 @@ class FleetManager:
     def get_all_miners_status(self) -> List[Dict]:
         """Get status of all miners"""
         with self.lock:
-            return [miner.to_dict() for miner in self.miners.values()]
+            miners_data = []
+            for miner in self.miners.values():
+                miner_dict = miner.to_dict()
+                # Include auto-tune state from thermal manager
+                if miner.ip in self.thermal_mgr.thermal_states:
+                    state = self.thermal_mgr.thermal_states[miner.ip]
+                    miner_dict['auto_tune_enabled'] = state.auto_tune_enabled and self.thermal_mgr.global_auto_tune_enabled
+                else:
+                    miner_dict['auto_tune_enabled'] = False
+                # Include group memberships
+                try:
+                    miner_dict['groups'] = self.db.get_miner_groups(miner.ip)
+                except Exception:
+                    miner_dict['groups'] = []
+                miners_data.append(miner_dict)
+            return miners_data
 
 
 # Global fleet manager
@@ -1099,6 +1114,432 @@ def set_miner_pools(ip: str):
         })
 
 
+# =============================================================================
+# BATCH OPERATIONS
+# =============================================================================
+
+@app.route('/api/batch/restart', methods=['POST'])
+def batch_restart():
+    """Restart multiple miners at once"""
+    data = request.get_json() or {}
+    ips = data.get('ips', [])
+
+    if not ips:
+        return jsonify({
+            'success': False,
+            'error': 'No miners specified'
+        }), 400
+
+    results = {'success': [], 'failed': []}
+
+    with fleet.lock:
+        for ip in ips:
+            miner = fleet.miners.get(ip)
+            if miner:
+                try:
+                    if miner.restart():
+                        results['success'].append(ip)
+                    else:
+                        results['failed'].append({'ip': ip, 'error': 'Restart failed'})
+                except Exception as e:
+                    results['failed'].append({'ip': ip, 'error': str(e)})
+            else:
+                results['failed'].append({'ip': ip, 'error': 'Miner not found'})
+
+    return jsonify({
+        'success': True,
+        'message': f"Restarted {len(results['success'])} miners",
+        'results': results
+    })
+
+
+@app.route('/api/batch/settings', methods=['POST'])
+def batch_settings():
+    """Apply settings to multiple miners at once"""
+    data = request.get_json() or {}
+    ips = data.get('ips', [])
+    settings = data.get('settings', {})
+
+    if not ips:
+        return jsonify({
+            'success': False,
+            'error': 'No miners specified'
+        }), 400
+
+    if not settings:
+        return jsonify({
+            'success': False,
+            'error': 'No settings specified'
+        }), 400
+
+    results = {'success': [], 'failed': []}
+
+    with fleet.lock:
+        for ip in ips:
+            miner = fleet.miners.get(ip)
+            if miner and config.is_esp_miner(miner.type):
+                try:
+                    miner.apply_settings(settings)
+                    results['success'].append(ip)
+                except Exception as e:
+                    results['failed'].append({'ip': ip, 'error': str(e)})
+            elif miner:
+                results['failed'].append({'ip': ip, 'error': 'Settings not supported for this miner type'})
+            else:
+                results['failed'].append({'ip': ip, 'error': 'Miner not found'})
+
+    return jsonify({
+        'success': True,
+        'message': f"Applied settings to {len(results['success'])} miners",
+        'results': results
+    })
+
+
+@app.route('/api/batch/remove', methods=['POST'])
+def batch_remove():
+    """Remove multiple miners at once"""
+    data = request.get_json() or {}
+    ips = data.get('ips', [])
+
+    if not ips:
+        return jsonify({
+            'success': False,
+            'error': 'No miners specified'
+        }), 400
+
+    results = {'success': [], 'failed': []}
+
+    with fleet.lock:
+        for ip in ips:
+            if ip in fleet.miners:
+                try:
+                    del fleet.miners[ip]
+                    fleet.db.delete_miner(ip)
+                    results['success'].append(ip)
+                except Exception as e:
+                    results['failed'].append({'ip': ip, 'error': str(e)})
+            else:
+                results['failed'].append({'ip': ip, 'error': 'Miner not found'})
+
+    return jsonify({
+        'success': True,
+        'message': f"Removed {len(results['success'])} miners",
+        'results': results
+    })
+
+
+# =============================================================================
+# MINER GROUPS
+# =============================================================================
+
+@app.route('/api/groups', methods=['GET'])
+def get_groups():
+    """Get all miner groups"""
+    try:
+        groups = fleet.db.get_all_groups()
+        return jsonify({
+            'success': True,
+            'groups': groups
+        })
+    except Exception as e:
+        logger.error(f"Error getting groups: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/groups', methods=['POST'])
+def create_group():
+    """Create a new miner group"""
+    data = request.get_json() or {}
+    name = data.get('name')
+    color = data.get('color', '#3498db')
+    description = data.get('description', '')
+
+    if not name:
+        return jsonify({'success': False, 'error': 'Group name is required'}), 400
+
+    try:
+        group_id = fleet.db.create_group(name, color, description)
+        return jsonify({
+            'success': True,
+            'group_id': group_id,
+            'message': f"Group '{name}' created"
+        })
+    except Exception as e:
+        if 'UNIQUE constraint' in str(e):
+            return jsonify({'success': False, 'error': 'Group name already exists'}), 400
+        logger.error(f"Error creating group: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/groups/<int:group_id>', methods=['GET'])
+def get_group(group_id):
+    """Get a specific group with its members"""
+    try:
+        group = fleet.db.get_group(group_id)
+        if not group:
+            return jsonify({'success': False, 'error': 'Group not found'}), 404
+
+        members = fleet.db.get_group_members(group_id)
+        group['members'] = members
+        return jsonify({
+            'success': True,
+            'group': group
+        })
+    except Exception as e:
+        logger.error(f"Error getting group: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/groups/<int:group_id>', methods=['PUT'])
+def update_group(group_id):
+    """Update a group"""
+    data = request.get_json() or {}
+
+    try:
+        fleet.db.update_group(
+            group_id,
+            name=data.get('name'),
+            color=data.get('color'),
+            description=data.get('description')
+        )
+        return jsonify({
+            'success': True,
+            'message': 'Group updated'
+        })
+    except Exception as e:
+        logger.error(f"Error updating group: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/groups/<int:group_id>', methods=['DELETE'])
+def delete_group(group_id):
+    """Delete a group"""
+    try:
+        fleet.db.delete_group(group_id)
+        return jsonify({
+            'success': True,
+            'message': 'Group deleted'
+        })
+    except Exception as e:
+        logger.error(f"Error deleting group: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/groups/<int:group_id>/members', methods=['POST'])
+def add_group_members(group_id):
+    """Add miners to a group"""
+    data = request.get_json() or {}
+    ips = data.get('ips', [])
+
+    if not ips:
+        return jsonify({'success': False, 'error': 'No miners specified'}), 400
+
+    try:
+        for ip in ips:
+            fleet.db.add_miner_to_group(ip, group_id)
+        return jsonify({
+            'success': True,
+            'message': f"Added {len(ips)} miners to group"
+        })
+    except Exception as e:
+        logger.error(f"Error adding members to group: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/groups/<int:group_id>/members', methods=['DELETE'])
+def remove_group_members(group_id):
+    """Remove miners from a group"""
+    data = request.get_json() or {}
+    ips = data.get('ips', [])
+
+    if not ips:
+        return jsonify({'success': False, 'error': 'No miners specified'}), 400
+
+    try:
+        for ip in ips:
+            fleet.db.remove_miner_from_group(ip, group_id)
+        return jsonify({
+            'success': True,
+            'message': f"Removed {len(ips)} miners from group"
+        })
+    except Exception as e:
+        logger.error(f"Error removing members from group: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/miners/<path:ip>/groups', methods=['GET'])
+def get_miner_groups(ip):
+    """Get all groups a miner belongs to"""
+    try:
+        groups = fleet.db.get_miner_groups(ip)
+        return jsonify({
+            'success': True,
+            'groups': groups
+        })
+    except Exception as e:
+        logger.error(f"Error getting miner groups: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/miners/<path:ip>/groups', methods=['PUT'])
+def set_miner_groups(ip):
+    """Set the groups for a miner (replaces existing)"""
+    data = request.get_json() or {}
+    group_ids = data.get('group_ids', [])
+
+    try:
+        fleet.db.set_miner_groups(ip, group_ids)
+        return jsonify({
+            'success': True,
+            'message': 'Miner groups updated'
+        })
+    except Exception as e:
+        logger.error(f"Error setting miner groups: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# =============================================================================
+# DATA EXPORT
+# =============================================================================
+
+@app.route('/api/export/miners', methods=['GET'])
+def export_miners():
+    """Export current miner data as JSON or CSV"""
+    format_type = request.args.get('format', 'json')
+
+    miners_data = []
+    with fleet.lock:
+        for ip, miner in fleet.miners.items():
+            status = miner.last_status or {}
+            miners_data.append({
+                'ip': ip,
+                'name': miner.custom_name or miner.model or miner.type,
+                'type': miner.type,
+                'model': miner.model,
+                'hashrate_ths': (status.get('hashrate', 0) or 0) / 1e12,
+                'temperature_c': status.get('temperature', 0),
+                'power_w': status.get('power', 0),
+                'fan_speed': status.get('fan_speed', 0),
+                'shares_accepted': status.get('shares_accepted', 0),
+                'shares_rejected': status.get('shares_rejected', 0),
+                'best_difficulty': status.get('best_difficulty', 0),
+                'status': status.get('status', 'offline'),
+                'efficiency_jth': round(status.get('power', 0) / max((status.get('hashrate', 0) or 1) / 1e12, 0.001), 2)
+            })
+
+    if format_type == 'csv':
+        import io
+        import csv
+        output = io.StringIO()
+        if miners_data:
+            writer = csv.DictWriter(output, fieldnames=miners_data[0].keys())
+            writer.writeheader()
+            writer.writerows(miners_data)
+        csv_data = output.getvalue()
+        return csv_data, 200, {
+            'Content-Type': 'text/csv',
+            'Content-Disposition': 'attachment; filename=miners_export.csv'
+        }
+
+    return jsonify({
+        'success': True,
+        'export_time': datetime.now().isoformat(),
+        'miners': miners_data
+    })
+
+
+@app.route('/api/export/history', methods=['GET'])
+def export_history():
+    """Export historical stats data"""
+    hours = request.args.get('hours', default=24, type=int)
+    format_type = request.args.get('format', 'json')
+
+    # Get history data from database
+    history_data = []
+    cutoff = datetime.now() - timedelta(hours=hours)
+
+    with fleet.db._get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                m.ip, m.custom_name, m.miner_type,
+                s.timestamp, s.hashrate, s.temperature, s.power,
+                s.fan_speed, s.shares_accepted, s.shares_rejected, s.status
+            FROM stats s
+            JOIN miners m ON s.miner_id = m.id
+            WHERE s.timestamp > ?
+            ORDER BY s.timestamp DESC
+        """, (cutoff.strftime('%Y-%m-%d %H:%M:%S'),))
+
+        for row in cursor.fetchall():
+            history_data.append({
+                'ip': row['ip'],
+                'name': row['custom_name'] or row['miner_type'],
+                'type': row['miner_type'],
+                'timestamp': row['timestamp'],
+                'hashrate_ths': (row['hashrate'] or 0) / 1e12,
+                'temperature_c': row['temperature'],
+                'power_w': row['power'],
+                'fan_speed': row['fan_speed'],
+                'shares_accepted': row['shares_accepted'],
+                'shares_rejected': row['shares_rejected'],
+                'status': row['status']
+            })
+
+    if format_type == 'csv':
+        import io
+        import csv
+        output = io.StringIO()
+        if history_data:
+            writer = csv.DictWriter(output, fieldnames=history_data[0].keys())
+            writer.writeheader()
+            writer.writerows(history_data)
+        csv_data = output.getvalue()
+        return csv_data, 200, {
+            'Content-Type': 'text/csv',
+            'Content-Disposition': f'attachment; filename=history_export_{hours}h.csv'
+        }
+
+    return jsonify({
+        'success': True,
+        'export_time': datetime.now().isoformat(),
+        'hours': hours,
+        'records': len(history_data),
+        'history': history_data
+    })
+
+
+@app.route('/api/export/profitability', methods=['GET'])
+def export_profitability():
+    """Export profitability history"""
+    days = request.args.get('days', default=7, type=int)
+    format_type = request.args.get('format', 'json')
+
+    profit_data = fleet.db.get_profitability_history(days)
+
+    if format_type == 'csv':
+        import io
+        import csv
+        output = io.StringIO()
+        if profit_data:
+            writer = csv.DictWriter(output, fieldnames=profit_data[0].keys())
+            writer.writeheader()
+            writer.writerows(profit_data)
+        csv_data = output.getvalue()
+        return csv_data, 200, {
+            'Content-Type': 'text/csv',
+            'Content-Disposition': f'attachment; filename=profitability_{days}d.csv'
+        }
+
+    return jsonify({
+        'success': True,
+        'export_time': datetime.now().isoformat(),
+        'days': days,
+        'records': len(profit_data),
+        'profitability': profit_data
+    })
+
+
 @app.route('/api/pools', methods=['GET'])
 def get_all_pools():
     """Get pool configuration for all miners"""
@@ -1106,15 +1547,42 @@ def get_all_pools():
 
     with fleet.lock:
         for ip, miner in fleet.miners.items():
-            pools_info = miner.api_handler.get_pools(ip)
-            if pools_info:
+            # Handle mock miners - return mock pool data
+            if getattr(miner, 'is_mock', False):
+                # Generate mock pool data based on miner type
+                mock_pools = [
+                    {
+                        'url': 'stratum+tcp://public-pool.io:21496',
+                        'user': f'bc1q...mock_{ip.replace(".", "")}',
+                        'pass': 'x'
+                    },
+                    {
+                        'url': 'stratum+tcp://solo.ckpool.org:3333',
+                        'user': f'bc1q...backup_{ip.replace(".", "")}',
+                        'pass': 'x'
+                    }
+                ]
                 pools_data.append({
                     'ip': ip,
                     'model': miner.model,
                     'type': miner.type,
-                    'pools': pools_info.get('pools', []),
-                    'active_pool': pools_info.get('active_pool', 0)
+                    'name': miner.custom_name or miner.model,
+                    'pools': mock_pools,
+                    'active_pool': 0,
+                    'is_mock': True
                 })
+            else:
+                # Real miner - call API handler
+                pools_info = miner.api_handler.get_pools(ip)
+                if pools_info:
+                    pools_data.append({
+                        'ip': ip,
+                        'model': miner.model,
+                        'type': miner.type,
+                        'name': miner.custom_name or miner.model,
+                        'pools': pools_info.get('pools', []),
+                        'active_pool': pools_info.get('active_pool', 0)
+                    })
 
     return jsonify({
         'success': True,
@@ -2264,8 +2732,22 @@ def get_power_history():
             ]
         else:
             # Get history for all miners (aggregated)
+            # Must track per-miner readings per bucket to avoid double-counting
             from collections import defaultdict
-            aggregated = defaultdict(float)
+            from datetime import datetime as dt
+
+            # Structure: {minute_bucket: {miner_ip: [power_readings]}}
+            bucket_miner_readings = defaultdict(lambda: defaultdict(list))
+
+            def bucket_timestamp(ts):
+                """Round timestamp to nearest minute for proper aggregation"""
+                if isinstance(ts, str):
+                    try:
+                        parsed = dt.strptime(ts[:16], '%Y-%m-%d %H:%M')
+                        return parsed.strftime('%Y-%m-%d %H:%M:00')
+                    except (ValueError, TypeError):
+                        return ts[:16] + ':00' if len(ts) >= 16 else ts
+                return ts
 
             for miner in fleet.miners.values():
                 miner_data = fleet.db.get_miner_by_ip(miner.ip)
@@ -2273,15 +2755,22 @@ def get_power_history():
                     history = fleet.db.get_stats_history(miner_data['id'], hours)
                     for h in history:
                         if h.get('power'):
-                            aggregated[h['timestamp']] += h['power']
+                            bucketed_ts = bucket_timestamp(h['timestamp'])
+                            bucket_miner_readings[bucketed_ts][miner.ip].append(h['power'])
 
-            data_points = [
-                {
+            # For each bucket, take average per miner, then sum across miners
+            data_points = []
+            for timestamp in sorted(bucket_miner_readings.keys()):
+                miner_readings = bucket_miner_readings[timestamp]
+                # Sum the average power of each miner in this bucket
+                total_power = sum(
+                    sum(readings) / len(readings)  # Average per miner
+                    for readings in miner_readings.values()
+                )
+                data_points.append({
                     'timestamp': timestamp,
-                    'power': power
-                }
-                for timestamp, power in sorted(aggregated.items())
-            ]
+                    'power': total_power
+                })
 
         return jsonify({
             'success': True,
@@ -2573,6 +3062,7 @@ def add_mock_miners():
                 'shares_accepted': 1247,
                 'shares_rejected': 3,
                 'best_difficulty': 2500000,  # 2.5M
+                'session_difficulty': 1850000,  # 1.85M (current session)
                 'uptime_seconds': 86400,
                 'hostname': 'bitaxe-ultra-1',
                 'firmware': 'v2.4.0',
@@ -2597,6 +3087,7 @@ def add_mock_miners():
                 'shares_accepted': 5621,
                 'shares_rejected': 12,
                 'best_difficulty': 15200000,  # 15.2M
+                'session_difficulty': 11500000,  # 11.5M (current session)
                 'uptime_seconds': 172800,
                 'hostname': 'nerdqaxe-plusplus',
                 'firmware': 'esp-miner-NERDQAXEPLUS-v1.0.35',
@@ -2621,6 +3112,7 @@ def add_mock_miners():
                 'shares_accepted': 892,
                 'shares_rejected': 2,
                 'best_difficulty': 3100000,  # 3.1M
+                'session_difficulty': 2750000,  # 2.75M (current session)
                 'uptime_seconds': 43200,
                 'hostname': 'bitaxe-gamma-1',
                 'firmware': 'v2.4.1',
@@ -2645,6 +3137,7 @@ def add_mock_miners():
                 'shares_accepted': 654,
                 'shares_rejected': 1,
                 'best_difficulty': 1800000,  # 1.8M
+                'session_difficulty': 1200000,  # 1.2M (current session)
                 'uptime_seconds': 259200,
                 'hostname': 'nerdaxe-1',
                 'firmware': 'v1.2.0',
@@ -2669,6 +3162,7 @@ def add_mock_miners():
                 'shares_accepted': 1102,
                 'shares_rejected': 5,
                 'best_difficulty': 2200000,  # 2.2M
+                'session_difficulty': 2200000,  # Same as best (just booted)
                 'uptime_seconds': 7200,
                 'hostname': 'bitaxe-supra',
                 'firmware': 'v2.3.0',
@@ -2693,6 +3187,7 @@ def add_mock_miners():
                 'shares_accepted': 821,
                 'shares_rejected': 2,
                 'best_difficulty': 1650000,  # 1.65M
+                'session_difficulty': 1450000,  # 1.45M (current session)
                 'uptime_seconds': 129600,
                 'hostname': 'bitaxe-og-1',
                 'firmware': 'v2.2.0',
@@ -2717,6 +3212,7 @@ def add_mock_miners():
                 'shares_accepted': 1456,
                 'shares_rejected': 4,
                 'best_difficulty': 1890000,  # 1.89M
+                'session_difficulty': 1600000,  # 1.6M (current session)
                 'uptime_seconds': 201600,
                 'hostname': 'bitaxe-max-1',
                 'firmware': 'v2.4.2',
@@ -2741,6 +3237,7 @@ def add_mock_miners():
                 'shares_accepted': 4892,
                 'shares_rejected': 8,
                 'best_difficulty': 12800000,  # 12.8M
+                'session_difficulty': 9500000,  # 9.5M (current session)
                 'uptime_seconds': 302400,
                 'hostname': 'nerdqaxe-plus-1',
                 'firmware': 'esp-miner-NERDQAXEPLUS-v1.0.32',
@@ -2765,6 +3262,7 @@ def add_mock_miners():
                 'shares_accepted': 9245,
                 'shares_rejected': 18,
                 'best_difficulty': 24500000,  # 24.5M
+                'session_difficulty': 18200000,  # 18.2M (current session)
                 'uptime_seconds': 432000,
                 'hostname': 'nerdoctaxe-1',
                 'firmware': 'esp-miner-NERDOCTAXE-v1.1.0',
@@ -2789,6 +3287,7 @@ def add_mock_miners():
                 'shares_accepted': 28456,
                 'shares_rejected': 45,
                 'best_difficulty': 85000000,  # 85M
+                'session_difficulty': 85000000,  # CGMiner: session = best (no persistent storage)
                 'uptime_seconds': 864000,
                 'hostname': 'antminer-s9-1',
                 'firmware': 'Antminer-S9-all-201812051512-autofreq-user-Update2UBI-NF-sig.tar.gz',

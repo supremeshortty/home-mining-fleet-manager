@@ -855,6 +855,101 @@ main {
 .stat-value.warning { color: var(--warning); }
 .stat-value.danger { color: var(--danger); }
 
+/* Cost breakdown inline display */
+.cost-breakdown {
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-top: 4px;
+    letter-spacing: 0;
+}
+
+/* Rate period indicator */
+.rate-period-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.period-badge {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-family: 'Chakra Petch', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.period-badge.off-peak {
+    background: linear-gradient(135deg, var(--success-glow), rgba(0, 200, 83, 0.3));
+    border: 2px solid var(--success);
+    color: var(--success);
+    box-shadow: 0 0 15px var(--success-glow);
+    animation: pulse-green 2s ease-in-out infinite;
+}
+
+.period-badge.peak {
+    background: linear-gradient(135deg, var(--danger-glow), rgba(255, 82, 82, 0.3));
+    border: 2px solid var(--danger);
+    color: var(--danger);
+    box-shadow: 0 0 15px var(--danger-glow);
+    animation: pulse-red 2s ease-in-out infinite;
+}
+
+.period-badge.standard {
+    background: linear-gradient(135deg, var(--cyan-glow), rgba(0, 212, 255, 0.3));
+    border: 2px solid var(--cyan);
+    color: var(--cyan);
+}
+
+@keyframes pulse-green {
+    0%, 100% { box-shadow: 0 0 15px var(--success-glow); }
+    50% { box-shadow: 0 0 25px var(--success-glow), 0 0 35px rgba(0, 230, 118, 0.2); }
+}
+
+@keyframes pulse-red {
+    0%, 100% { box-shadow: 0 0 15px var(--danger-glow); }
+    50% { box-shadow: 0 0 25px var(--danger-glow), 0 0 35px rgba(255, 82, 82, 0.2); }
+}
+
+.period-time {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.rate-period-card {
+    min-width: 140px;
+}
+
+/* Data type badges (Actual vs Estimated) */
+.data-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    vertical-align: middle;
+    margin-left: 6px;
+}
+
+.data-badge.actual {
+    background: rgba(0, 230, 118, 0.15);
+    color: var(--success);
+    border: 1px solid rgba(0, 230, 118, 0.3);
+}
+
+.data-badge.estimated {
+    background: rgba(139, 92, 246, 0.15);
+    color: var(--purple);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
 /* Solo mining odds display */
 .solo-odds-details {
     display: flex;
@@ -1321,6 +1416,169 @@ section {
     font-weight: bold;
 }
 
+/* Efficiency color coding (lower J/TH is better) */
+.efficiency-excellent {
+    color: #00e676 !important; /* Bright green - < 25 J/TH */
+    font-weight: 600;
+}
+
+.efficiency-good {
+    color: #69f0ae !important; /* Light green - 25-40 J/TH */
+}
+
+.efficiency-average {
+    color: var(--text-primary); /* Default - 40-60 J/TH */
+}
+
+.efficiency-poor {
+    color: #ffab00 !important; /* Orange/amber - 60-100 J/TH */
+}
+
+.efficiency-bad {
+    color: #ff5252 !important; /* Red - > 100 J/TH (legacy miners) */
+}
+
+/* Efficiency help icon and tooltip */
+.efficiency-help {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.help-icon {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--space-surface);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.help-icon:hover {
+    background: var(--cyan);
+    border-color: var(--cyan);
+    color: var(--void);
+}
+
+/* Efficiency tooltip modal */
+.efficiency-tooltip {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--space-light);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 20px 24px;
+    max-width: 380px;
+    width: 90%;
+    z-index: 10001;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+
+.efficiency-tooltip.active {
+    display: block;
+}
+
+.efficiency-tooltip-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 10000;
+}
+
+.efficiency-tooltip-overlay.active {
+    display: block;
+}
+
+.efficiency-tooltip h4 {
+    font-family: 'Chakra Petch', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--cyan);
+    margin: 0 0 12px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.efficiency-tooltip p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin: 0 0 12px 0;
+}
+
+.efficiency-tooltip p:last-of-type {
+    margin-bottom: 0;
+}
+
+.efficiency-tooltip .formula {
+    background: var(--space-dark);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--amber);
+    margin: 12px 0;
+    text-align: center;
+}
+
+.efficiency-tooltip .equivalence {
+    background: var(--purple-glow);
+    border: 1px solid var(--purple-dim);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 12px 0;
+}
+
+.efficiency-tooltip .equivalence strong {
+    color: var(--purple);
+}
+
+.efficiency-tooltip .rating-scale {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    font-size: 0.8rem;
+    margin-top: 12px;
+}
+
+.efficiency-tooltip .rating-scale span:nth-child(odd) {
+    font-weight: 600;
+}
+
+.efficiency-tooltip .close-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px;
+    line-height: 1;
+}
+
+.efficiency-tooltip .close-btn:hover {
+    color: var(--text-primary);
+}
+
 .miner-header {
     display: flex;
     justify-content: space-between;
@@ -1550,6 +1808,43 @@ section {
 .chart-container {
     position: relative;
     height: 400px;
+}
+
+/* Energy chart section */
+.energy-chart-section {
+    background: var(--space);
+    padding: 20px 24px;
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--border-default);
+    margin-bottom: 24px;
+}
+
+.energy-chart-summary {
+    display: flex;
+    justify-content: space-around;
+    padding: 16px 0;
+    margin-top: 16px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.energy-chart-summary .summary-item {
+    text-align: center;
+}
+
+.energy-chart-summary .summary-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+}
+
+.energy-chart-summary .summary-value {
+    font-family: 'Chakra Petch', sans-serif;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--cyan);
 }
 
 .chart-controls-section {
@@ -2360,8 +2655,535 @@ section {
 .loading-simulation {
     grid-column: 1 / -1;
     text-align: center;
-    padding: 32px;
+    padding: 48px 32px;
     color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.loading-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border-default);
+    border-top-color: var(--cyan);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ============================================================================
+   AUTOMATED MINING CONTROL - Redesigned
+   ============================================================================ */
+.mining-control-panel {
+    background: var(--space);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+}
+
+.control-intro {
+    margin-bottom: 24px;
+}
+
+.control-intro p {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.mining-schedule-redesign {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Period Control Cards */
+.period-control-card {
+    background: var(--space-dark);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+}
+
+.period-control-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+}
+
+.period-control-card.peak::before {
+    background: linear-gradient(90deg, var(--danger), var(--warning));
+}
+
+.period-control-card.offpeak::before {
+    background: linear-gradient(90deg, var(--success), var(--cyan));
+}
+
+.period-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.period-badge-lg {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-family: 'Chakra Petch', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+
+.period-badge-lg.peak {
+    background: linear-gradient(135deg, var(--danger-glow), rgba(255, 171, 0, 0.2));
+    border: 1px solid var(--danger);
+    color: var(--danger);
+}
+
+.period-badge-lg.offpeak {
+    background: linear-gradient(135deg, var(--success-glow), rgba(0, 212, 255, 0.15));
+    border: 1px solid var(--success);
+    color: var(--success);
+}
+
+.period-badge-lg svg {
+    stroke: currentColor;
+}
+
+.period-rate-preview {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    background: var(--space-light);
+    padding: 4px 10px;
+    border-radius: 12px;
+}
+
+.period-rate-preview.success {
+    color: var(--success);
+    background: var(--success-glow);
+}
+
+.period-description {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+    line-height: 1.5;
+}
+
+/* Control Options - Radio Cards */
+.control-options {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.control-option {
+    cursor: pointer;
+}
+
+.control-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.option-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    background: var(--space);
+    border: 2px solid var(--border-default);
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
+}
+
+.control-option input[type="radio"]:checked + .option-card {
+    border-color: var(--cyan);
+    background: var(--cyan-glow);
+    box-shadow: 0 0 20px var(--cyan-glow);
+}
+
+.control-option:hover .option-card {
+    border-color: var(--border-strong);
+    transform: translateY(-2px);
+}
+
+.option-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    flex-shrink: 0;
+}
+
+.option-icon.off {
+    background: var(--danger-glow);
+    color: var(--danger);
+}
+
+.option-icon.reduce {
+    background: var(--warning-glow);
+    color: var(--warning);
+}
+
+.option-icon.max {
+    background: var(--success-glow);
+    color: var(--success);
+}
+
+.option-icon.custom {
+    background: var(--purple-glow);
+    color: var(--purple);
+}
+
+.option-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+.option-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.option-title {
+    font-family: 'Chakra Petch', sans-serif;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-bright);
+}
+
+.option-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+/* Frequency Input Group */
+.frequency-input-group {
+    background: var(--space);
+    padding: 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+    animation: slideDown 0.3s ease;
+}
+
+.frequency-input-group.hidden {
+    display: none;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.frequency-input-group label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+.freq-slider-container {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.freq-slider {
+    flex: 1;
+    height: 6px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--space-light);
+    border-radius: 3px;
+    outline: none;
+}
+
+.freq-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--cyan);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 10px var(--cyan-glow);
+    transition: transform 0.2s;
+}
+
+.freq-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+.freq-slider.offpeak::-webkit-slider-thumb {
+    background: var(--success);
+    box-shadow: 0 0 10px var(--success-glow);
+}
+
+.freq-number {
+    width: 80px;
+    padding: 8px 12px;
+    background: var(--space-dark);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    color: var(--text-bright);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.freq-number:focus {
+    outline: none;
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 2px var(--cyan-glow);
+}
+
+.freq-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+}
+
+/* Advanced Control */
+.advanced-control {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.advanced-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--space-dark);
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.advanced-header:hover {
+    background: var(--space-light);
+    color: var(--text-secondary);
+}
+
+.advanced-header svg {
+    transition: transform var(--transition-fast);
+}
+
+.advanced-header.expanded svg {
+    transform: rotate(180deg);
+}
+
+.advanced-content {
+    padding: 16px;
+    background: var(--space);
+}
+
+.advanced-content.hidden {
+    display: none;
+}
+
+.threshold-control label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+}
+
+.threshold-input-group {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    width: fit-content;
+}
+
+.input-prefix,
+.input-suffix {
+    padding: 10px 12px;
+    background: var(--space-light);
+    border: 1px solid var(--border-default);
+    color: var(--text-muted);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.85rem;
+}
+
+.input-prefix {
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    border-right: none;
+}
+
+.input-suffix {
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    border-left: none;
+}
+
+.threshold-input-group input {
+    width: 80px;
+    padding: 10px;
+    background: var(--space-dark);
+    border: 1px solid var(--border-default);
+    color: var(--text-bright);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.threshold-input-group input:focus {
+    outline: none;
+    border-color: var(--cyan);
+}
+
+.form-hint-subtle {
+    display: block;
+    margin-top: 10px;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+}
+
+/* Button Large */
+.btn-lg {
+    padding: 14px 28px !important;
+    font-size: 0.95rem !important;
+}
+
+/* ============================================================================
+   STRATEGY OPTIMIZER - Redesigned
+   ============================================================================ */
+.optimizer-intro {
+    margin-bottom: 24px;
+}
+
+.optimizer-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: var(--purple-glow);
+    border: 1px solid var(--purple);
+    border-radius: 20px;
+    color: var(--purple);
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+.optimizer-description {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.strategy-optimizer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+/* Enhanced Strategy Cards */
+.strategy-card {
+    background: var(--space);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+    transition: all var(--transition-base);
+}
+
+.strategy-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--border-default);
+}
+
+.strategy-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--border-accent);
+    box-shadow: var(--shadow-lg);
+}
+
+.strategy-card.recommended {
+    border-color: var(--success);
+    background: linear-gradient(135deg, var(--space) 0%, var(--success-glow) 100%);
+}
+
+.strategy-card.recommended::before {
+    background: linear-gradient(90deg, var(--success), var(--cyan));
+}
+
+.strategy-card.recommended .strategy-badge {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: var(--success);
+    color: var(--void);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .control-options {
+        grid-template-columns: 1fr;
+    }
+
+    .period-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .freq-slider-container {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .freq-number {
+        width: 100%;
+    }
+
+    .strategy-optimizer-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 /* ============================================================================
@@ -3008,6 +3830,73 @@ section {
         right: 16px;
         top: 16px;
     }
+
+    /* Miners header controls - responsive */
+    .miners-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .miners-header-controls {
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .miners-header-controls .group-filter {
+        flex: 1;
+        min-width: 120px;
+    }
+
+    .miners-header-controls .group-filter select {
+        width: 100%;
+    }
+
+    /* Batch toolbar responsive */
+    .batch-toolbar {
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px;
+    }
+
+    .batch-actions {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    /* Groups modal responsive */
+    .groups-modal-content {
+        width: 95%;
+        max-height: 90vh;
+    }
+
+    .create-group-form {
+        flex-direction: column;
+    }
+
+    .create-group-form input[type="text"] {
+        width: 100%;
+    }
+
+    .assign-miners-list {
+        grid-template-columns: 1fr;
+    }
+
+    /* Miner card stats - 2 columns on tablet */
+    .miner-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    /* Group tags - smaller on mobile */
+    .miner-groups-tags {
+        margin-top: 6px;
+    }
+
+    .group-tag {
+        font-size: 0.7em;
+        padding: 1px 6px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -3033,6 +3922,110 @@ section {
 
     .nav-label {
         font-size: 0.75rem;
+    }
+
+    /* Header adjustments for small screens */
+    header {
+        padding: 12px;
+    }
+
+    .header-left h1 {
+        font-size: 1.25rem;
+    }
+
+    .header-subtitle {
+        font-size: 0.75rem;
+    }
+
+    .header-center {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .btn {
+        padding: 8px 12px;
+        font-size: 0.85rem;
+    }
+
+    /* Miner card adjustments */
+    .miner-card {
+        padding: 12px;
+    }
+
+    .miner-header {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .miner-name {
+        font-size: 1rem;
+    }
+
+    .miner-badges {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    /* Batch toolbar - stack on mobile */
+    .batch-toolbar {
+        padding: 10px;
+    }
+
+    .batch-info {
+        font-size: 0.85rem;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .batch-actions .btn {
+        font-size: 0.8rem;
+        padding: 6px 10px;
+    }
+
+    /* Groups modal on mobile */
+    .groups-modal-content {
+        margin: 10px;
+        width: calc(100% - 20px);
+    }
+
+    .groups-modal-header {
+        padding: 16px;
+    }
+
+    .groups-modal-body {
+        padding: 16px;
+    }
+
+    .group-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .group-item-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    /* Export buttons */
+    .export-buttons {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .export-buttons .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* Modal overlay */
+    .modal-overlay {
+        padding: 10px;
+    }
+
+    .modal-content {
+        max-height: 90vh;
+        margin: 0;
     }
 }
 
@@ -4312,6 +5305,25 @@ section {
     margin: 0;
 }
 
+.auto-tune-active-notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: var(--radius-md);
+    margin-top: 16px;
+    color: var(--success);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.auto-tune-active-notice svg {
+    flex-shrink: 0;
+    stroke: var(--success);
+}
+
 .fan-apply-btn {
     width: 100%;
     margin-top: 16px;
@@ -4593,6 +5605,389 @@ section {
 
 .miner-card .miner-actions button {
     cursor: pointer;
+}
+
+/* ============================================================================
+   BATCH OPERATIONS
+   ============================================================================ */
+.miners-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.miners-header h2 {
+    margin-bottom: 0;
+}
+
+.batch-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--space);
+    border: 1px solid var(--primary);
+    border-radius: var(--radius-lg);
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.batch-info {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    color: var(--text-secondary);
+}
+
+.batch-info span:first-child {
+    color: var(--primary);
+    font-weight: 600;
+    font-size: 1.1em;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--primary);
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+    font-size: 0.9em;
+}
+
+.btn-link:hover {
+    color: var(--primary-bright);
+}
+
+.batch-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 0.85em;
+}
+
+.btn-sm .btn-icon {
+    width: 14px;
+    height: 14px;
+}
+
+/* Miner selection checkbox */
+.miner-checkbox-wrapper {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
+}
+
+.miner-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+
+.miner-card.selected {
+    border-color: var(--primary);
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, var(--space) 100%);
+}
+
+#batch-select-btn.active {
+    background: var(--primary);
+    color: var(--bg);
+}
+
+/* ============================================================================
+   MINER GROUPS
+   ============================================================================ */
+.miners-header-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.group-filter select {
+    background: var(--space-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-primary);
+    padding: 6px 12px;
+    font-size: 0.85em;
+    cursor: pointer;
+}
+
+.group-filter select:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* Groups Modal */
+.groups-modal-content {
+    background: var(--card-bg);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.groups-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+}
+
+.groups-modal-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-bright);
+}
+
+.groups-modal-body {
+    padding: 24px;
+    overflow-y: auto;
+}
+
+/* Create Group Section */
+.create-group-section {
+    margin-bottom: 24px;
+}
+
+.create-group-section h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.create-group-form {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.create-group-form input[type="text"] {
+    flex: 1;
+    padding: 10px 14px;
+    background: var(--space-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.create-group-form input[type="text"]:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.create-group-form input[type="color"] {
+    width: 40px;
+    height: 36px;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    padding: 0;
+}
+
+/* Groups List */
+.groups-list-section h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.groups-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.group-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--space-surface);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+
+.group-item-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.group-color-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.group-item-name {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.group-item-count {
+    font-size: 0.85em;
+    color: var(--text-secondary);
+    margin-left: 8px;
+}
+
+.group-item-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.group-item-actions button {
+    padding: 4px 8px;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 0.8em;
+    background: transparent;
+    color: var(--text-secondary);
+    transition: all var(--transition);
+}
+
+.group-item-actions button:hover {
+    background: var(--space-lighter);
+    color: var(--text-primary);
+}
+
+.group-item-actions button.delete:hover {
+    background: var(--danger-glow);
+    color: var(--danger);
+}
+
+/* Assign Miners Section */
+.assign-miners-section {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+}
+
+.assign-miners-section h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+}
+
+.assign-miners-section h3 span {
+    color: var(--primary);
+}
+
+.assign-miners-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 16px;
+}
+
+.assign-miner-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--space-surface);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.assign-miner-item:hover {
+    background: var(--space-lighter);
+}
+
+.assign-miner-item input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary);
+}
+
+.assign-miner-item label {
+    cursor: pointer;
+    font-size: 0.9em;
+    color: var(--text-primary);
+}
+
+.assign-miners-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+/* Group tags on miner cards */
+.miner-groups-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.group-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 0.75em;
+    border-radius: 12px;
+    background: var(--space-surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+
+.group-tag .tag-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.no-groups-message {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 20px;
+    font-size: 0.9em;
+}
+
+/* ============================================================================
+   DATA EXPORT
+   ============================================================================ */
+.section-header-with-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.export-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 /* ============================================================================

@@ -45,10 +45,17 @@ class Database:
                     miner_type TEXT NOT NULL,
                     model TEXT,
                     custom_name TEXT,
+                    auto_optimize INTEGER DEFAULT 0,
                     discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+
+            # Migration: Add auto_optimize column if it doesn't exist (for existing databases)
+            try:
+                cursor.execute("ALTER TABLE miners ADD COLUMN auto_optimize INTEGER DEFAULT 0")
+            except Exception:
+                pass  # Column already exists
 
             # Stats table
             cursor.execute("""
@@ -208,6 +215,39 @@ class Database:
                     value TEXT,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            """)
+
+            # Miner groups table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS miner_groups (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    color TEXT DEFAULT '#3498db',
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Miner-to-group junction table (many-to-many)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS miner_group_members (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    miner_ip TEXT NOT NULL,
+                    group_id INTEGER NOT NULL,
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (group_id) REFERENCES miner_groups(id) ON DELETE CASCADE,
+                    UNIQUE(miner_ip, group_id)
+                )
+            """)
+
+            # Index for faster group member lookups
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_miner_group_members_ip
+                ON miner_group_members(miner_ip)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_miner_group_members_group
+                ON miner_group_members(group_id)
             """)
 
             # Migrations: Add custom_name column if it doesn't exist
@@ -618,6 +658,32 @@ class Database:
             """, (cutoff,))
             shares_row = cursor.fetchone()
 
+            # Fallback: If delta is 0, get current total shares from latest stats per miner
+            # This handles mock miners and cases where shares haven't changed
+            shares_accepted = shares_row['total_shares_accepted'] if shares_row else 0
+            shares_rejected = shares_row['total_shares_rejected'] if shares_row else 0
+
+            if shares_accepted == 0:
+                cursor.execute("""
+                    SELECT
+                        COALESCE(SUM(shares_accepted), 0) as current_shares_accepted,
+                        COALESCE(SUM(shares_rejected), 0) as current_shares_rejected
+                    FROM (
+                        SELECT miner_id, shares_accepted, shares_rejected
+                        FROM stats s1
+                        WHERE timestamp = (
+                            SELECT MAX(timestamp) FROM stats s2
+                            WHERE s2.miner_id = s1.miner_id
+                            AND timestamp > ?
+                        )
+                        AND status = 'online'
+                    )
+                """, (cutoff,))
+                current_row = cursor.fetchone()
+                if current_row:
+                    shares_accepted = current_row['current_shares_accepted'] or 0
+                    shares_rejected = current_row['current_shares_rejected'] or 0
+
             # Calculate average fleet power by grouping readings into time buckets
             # Group by 30-second intervals to match the update frequency
             cursor.execute("""
@@ -652,8 +718,8 @@ class Database:
             diff_row = cursor.fetchone()
 
             return {
-                'total_shares_accepted': shares_row['total_shares_accepted'] if shares_row else 0,
-                'total_shares_rejected': shares_row['total_shares_rejected'] if shares_row else 0,
+                'total_shares_accepted': shares_accepted,
+                'total_shares_rejected': shares_rejected,
                 'avg_power': power_row['avg_fleet_power'] if power_row else 0,
                 'max_power': power_row['max_power'] if power_row else 0,
                 'min_power': power_row['min_power'] if power_row else 0,
@@ -759,3 +825,117 @@ class Database:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM settings WHERE key = ?", (key,))
+
+    # Miner Group Management Methods
+
+    def create_group(self, name: str, color: str = '#3498db', description: str = None) -> int:
+        """Create a new miner group"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO miner_groups (name, color, description)
+                VALUES (?, ?, ?)
+            """, (name, color, description))
+            return cursor.lastrowid
+
+    def update_group(self, group_id: int, name: str = None, color: str = None, description: str = None):
+        """Update an existing group"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            updates = []
+            params = []
+            if name is not None:
+                updates.append("name = ?")
+                params.append(name)
+            if color is not None:
+                updates.append("color = ?")
+                params.append(color)
+            if description is not None:
+                updates.append("description = ?")
+                params.append(description)
+            if updates:
+                params.append(group_id)
+                cursor.execute(f"""
+                    UPDATE miner_groups SET {', '.join(updates)} WHERE id = ?
+                """, params)
+
+    def delete_group(self, group_id: int):
+        """Delete a group (members are automatically removed via CASCADE)"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM miner_groups WHERE id = ?", (group_id,))
+
+    def get_all_groups(self) -> List[Dict]:
+        """Get all miner groups with member count"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT g.*, COUNT(m.id) as member_count
+                FROM miner_groups g
+                LEFT JOIN miner_group_members m ON g.id = m.group_id
+                GROUP BY g.id
+                ORDER BY g.name
+            """)
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def get_group(self, group_id: int) -> Optional[Dict]:
+        """Get a specific group"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM miner_groups WHERE id = ?", (group_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def add_miner_to_group(self, miner_ip: str, group_id: int):
+        """Add a miner to a group"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR IGNORE INTO miner_group_members (miner_ip, group_id)
+                VALUES (?, ?)
+            """, (miner_ip, group_id))
+
+    def remove_miner_from_group(self, miner_ip: str, group_id: int):
+        """Remove a miner from a group"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                DELETE FROM miner_group_members WHERE miner_ip = ? AND group_id = ?
+            """, (miner_ip, group_id))
+
+    def get_miner_groups(self, miner_ip: str) -> List[Dict]:
+        """Get all groups a miner belongs to"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT g.* FROM miner_groups g
+                JOIN miner_group_members m ON g.id = m.group_id
+                WHERE m.miner_ip = ?
+                ORDER BY g.name
+            """, (miner_ip,))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def get_group_members(self, group_id: int) -> List[str]:
+        """Get all miner IPs in a group"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT miner_ip FROM miner_group_members WHERE group_id = ?
+            """, (group_id,))
+            rows = cursor.fetchall()
+            return [row['miner_ip'] for row in rows]
+
+    def set_miner_groups(self, miner_ip: str, group_ids: List[int]):
+        """Set the groups for a miner (replaces existing memberships)"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            # Remove from all groups first
+            cursor.execute("DELETE FROM miner_group_members WHERE miner_ip = ?", (miner_ip,))
+            # Add to specified groups
+            for group_id in group_ids:
+                cursor.execute("""
+                    INSERT INTO miner_group_members (miner_ip, group_id)
+                    VALUES (?, ?)
+                """, (miner_ip, group_id))

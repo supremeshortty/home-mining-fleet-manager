@@ -110,6 +110,7 @@ class CGMinerAPIHandler(MinerAPIHandler):
                     'shares_accepted': int(data.get('Accepted', 0)),
                     'shares_rejected': int(data.get('Rejected', 0)),
                     'best_difficulty': float(data.get('Best Share', 0)),
+                    'session_difficulty': float(data.get('Best Share', 0)),  # CGMiner only tracks since boot
                     'uptime_seconds': int(data.get('Elapsed', 0)),
                     'raw': {
                         'summary': summary,

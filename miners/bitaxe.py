@@ -197,7 +197,7 @@ class BitaxeAPIHandler(MinerAPIHandler):
                 'shares_accepted': int(data.get('sharesAccepted', data.get('shares', 0))),
                 'shares_rejected': int(data.get('sharesRejected', 0)),
                 'best_difficulty': data.get('bestDiff', data.get('bestDifficulty', 0)),
-                'session_difficulty': data.get('sessionDiff', 0),
+                'session_difficulty': data.get('bestSessionDiff', data.get('sessionDiff', 0)),
                 'uptime_seconds': int(data.get('uptimeSeconds', data.get('runningTime', 0))),
                 # Device info
                 'hostname': data.get('hostname', ''),
