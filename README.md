@@ -1,8 +1,21 @@
-# DirtySats - Bitcoin Mining Fleet Manager
+<p align="center">
+  <img src="static/logo.png" alt="DirtySats Logo" width="400">
+</p>
+
+<p align="center">
+  <strong>Bitcoin Mining Fleet Manager</strong><br>
+  <em>Stack sats, track stats</em>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Status-Active-brightgreen" alt="Status">
+  <img src="https://img.shields.io/badge/Python-3.7+-blue" alt="Python">
+  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="License">
+</p>
+
+---
 
 A production-ready Bitcoin mining fleet management dashboard for home-scale miners. Monitor, optimize, and manage your mining operation with real-time data, energy cost tracking, and profitability analysis.
-
-![DirtySats Dashboard](https://img.shields.io/badge/Status-Active-brightgreen) ![Python](https://img.shields.io/badge/Python-3.7+-blue) ![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ## Features
 
