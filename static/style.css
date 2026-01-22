@@ -1128,6 +1128,13 @@ code, .monospace {
     margin-right: 4px;
 }
 
+/* Header Logo Image */
+.header-logo-img {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
+}
+
 /* Section Icons */
 .section-icon {
     width: 22px;
