@@ -1128,11 +1128,51 @@ code, .monospace {
     margin-right: 4px;
 }
 
-/* Header Logo Image */
-.header-logo-img {
-    height: 40px;
-    width: auto;
-    object-fit: contain;
+/* Header Logo - Terminal Style */
+.header-logo {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+}
+
+.header-logo .logo-prompt {
+    color: var(--amber);
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-right: 6px;
+}
+
+.header-logo .logo-text {
+    color: var(--amber);
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-shadow: 0 0 10px rgba(247, 147, 26, 0.5);
+}
+
+.header-logo .logo-cursor {
+    color: var(--amber);
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
+    font-size: 1.4rem;
+    font-weight: 700;
+    animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+.header-logo .logo-subtitle {
+    color: var(--text-muted);
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-top: -2px;
 }
 
 /* Section Icons */
