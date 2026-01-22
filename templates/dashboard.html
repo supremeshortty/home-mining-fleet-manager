@@ -11,14 +11,14 @@
     <!-- Sidebar Navigation -->
     <nav class="sidebar">
         <div class="sidebar-header">
-            <div class="sidebar-logo">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="4" y="4" width="16" height="16" rx="2"/>
-                    <rect x="9" y="9" width="6" height="6"/>
-                    <path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/>
-                </svg>
+            <div class="sidebar-logo-text">
+                <div class="sidebar-logo-main">
+                    <span class="sidebar-prompt">&gt;</span>
+                    <span class="sidebar-brand">DIRTYSATS</span>
+                    <span class="sidebar-cursor">_</span>
+                </div>
+                <div class="sidebar-subtitle">Mining Fleet Manager</div>
             </div>
-            <span class="sidebar-title">DirtySats</span>
         </div>
 
         <div class="sidebar-nav">
@@ -102,9 +102,12 @@
         <header>
             <div class="header-left">
                 <div class="header-logo">
-                    <span class="logo-prompt">&gt;</span>
-                    <span class="logo-text">DIRTYSATS</span><span class="logo-cursor">_</span>
-                    <div class="logo-subtitle">[FLEET CONTROL v1.0]</div>
+                    <div class="logo-main">
+                        <span class="logo-prompt">&gt;</span>
+                        <span class="logo-text">DIRTYSATS</span>
+                        <span class="logo-cursor">_</span>
+                    </div>
+                    <div class="logo-subtitle">Mining Fleet Manager</div>
                 </div>
             </div>
             <div class="header-center">
@@ -129,12 +132,29 @@
                 <span id="last-update" class="status-text">Last update: Never</span>
             </div>
             <div class="header-right">
-                <button class="donate-btn" onclick="openDonationModal()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                    </svg>
-                    <span>Donate</span>
-                </button>
+                <div class="header-donation">
+                    <a href="https://primal.net/p/nprofile1qqst4pfsvfektm8dqn9pnfucq9722nahsv84ezcdsaclav5083luftghnrq8y" target="_blank" class="donation-qr-link" title="Zap on Primal">
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=https://primal.net/p/nprofile1qqst4pfsvfektm8dqn9pnfucq9722nahsv84ezcdsaclav5083luftghnrq8y&bgcolor=0a0d14&color=f7931a" alt="Primal QR">
+                    </a>
+                    <div class="donation-info">
+                        <div class="donation-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="lightning-icon">
+                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                            </svg>
+                            <span>Support Development</span>
+                        </div>
+                        <div class="donation-row">
+                            <span class="donation-label">Primal:</span>
+                            <a href="https://primal.net/p/nprofile1qqst4pfsvfektm8dqn9pnfucq9722nahsv84ezcdsaclav5083luftghnrq8y" target="_blank" class="donation-primal-link">@satman</a>
+                        </div>
+                        <div class="donation-row">
+                            <span class="donation-label">Lightning:</span>
+                            <div class="donation-address" onclick="copyLightningAddress()" title="Click to copy">
+                                amberloin26@primal.net
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </header>
 
@@ -1654,6 +1674,18 @@
                 if (typeof switchTab === 'function') switchTab(tab);
             });
         });
+
+        // Sidebar hover: fade header logo when sidebar expands
+        const sidebar = document.querySelector('.sidebar');
+        const headerLogo = document.querySelector('.header-logo');
+        if (sidebar && headerLogo) {
+            sidebar.addEventListener('mouseenter', () => {
+                headerLogo.style.opacity = '0';
+            });
+            sidebar.addEventListener('mouseleave', () => {
+                headerLogo.style.opacity = '1';
+            });
+        }
 
         // Donation modal functions
         function openDonationModal() {
