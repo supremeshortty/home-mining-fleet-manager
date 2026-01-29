@@ -831,7 +831,7 @@ function handleGroupedLegendClick(e, legendItem, legend) {
 const CHART_DEFAULTS = {
     responsive: true,
     maintainAspectRatio: false,
-    animation: { duration: 300, easing: 'easeOutQuart' },
+    animation: false,
     interaction: { mode: 'nearest', intersect: false },
     plugins: {
         legend: {
@@ -3032,11 +3032,17 @@ function updateLastUpdateTime() {
 // Load Fleet Combined Chart (6 hours, compact view for dashboard)
 // Style: Total hashrate (red with fill), average hashrate (dashed), avg temperature (white/gray)
 async function loadFleetCombinedChart(hours = 6) {
+    // Skip updates when tab is hidden
+    if (!chartsVisible) return;
+
+    // Cancel any pending request for this chart
+    const signal = cancelChartRequest('fleetCombined');
+
     try {
-        // Fetch both temperature and hashrate data in parallel
+        // Fetch both temperature and hashrate data in parallel with abort support
         const [tempResponse, hashrateResponse] = await Promise.all([
-            fetch(`${API_BASE}/api/history/temperature?hours=${hours}`),
-            fetch(`${API_BASE}/api/history/hashrate?hours=${hours}`)
+            fetch(`${API_BASE}/api/history/temperature?hours=${hours}`, { signal }),
+            fetch(`${API_BASE}/api/history/hashrate?hours=${hours}`, { signal })
         ]);
 
         const tempResult = await tempResponse.json();
@@ -3046,8 +3052,6 @@ async function loadFleetCombinedChart(hours = 6) {
             console.error('Error loading fleet chart data');
             return;
         }
-
-        const ctx = document.getElementById('fleet-combined-chart').getContext('2d');
 
         // Bucket size based on time range for optimal data point density
         const BUCKET_SIZE = hours <= 1 ? 1 * 60 * 1000 :      // 1 min for 1 hour
@@ -3136,13 +3140,13 @@ async function loadFleetCombinedChart(hours = 6) {
                 data: totalHashrateData,
                 borderColor: '#e74c3c',
                 backgroundColor: 'rgba(231, 76, 60, 0.25)',
-                borderWidth: 2,
+                borderWidth: 1,
                 fill: true,
                 tension: 0.2,
                 yAxisID: 'y-hashrate',
                 order: 1,
-                pointRadius: 2,
-                pointHoverRadius: 5,
+                pointRadius: 0,
+                pointHoverRadius: 4,
                 pointBackgroundColor: '#e74c3c',
                 pointBorderColor: '#e74c3c',
                 pointBorderWidth: 0
@@ -3156,7 +3160,7 @@ async function loadFleetCombinedChart(hours = 6) {
                 data: avgHashrateLineData,
                 borderColor: '#e74c3c',
                 backgroundColor: 'transparent',
-                borderWidth: 1.5,
+                borderWidth: 1,
                 borderDash: [6, 4],
                 fill: false,
                 tension: 0,
@@ -3174,12 +3178,12 @@ async function loadFleetCombinedChart(hours = 6) {
                 data: avgTempData,
                 borderColor: 'rgba(255, 255, 255, 0.85)',
                 backgroundColor: 'transparent',
-                borderWidth: 1.5,
+                borderWidth: 1,
                 fill: false,
                 tension: 0.2,
                 yAxisID: 'y-temperature',
                 order: 2,
-                pointRadius: 1.5,
+                pointRadius: 0,
                 pointHoverRadius: 4,
                 pointBackgroundColor: 'rgba(255, 255, 255, 0.85)',
                 pointBorderColor: 'rgba(255, 255, 255, 0.85)',
@@ -3187,139 +3191,152 @@ async function loadFleetCombinedChart(hours = 6) {
             });
         }
 
-        // Destroy existing chart
-        if (fleetCombinedChart) {
-            fleetCombinedChart.destroy();
-        }
-
-        // Create new chart
-        fleetCombinedChart = new Chart(ctx, {
-            type: 'line',
-            data: { datasets },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: false,
-                interaction: {
-                    mode: 'index',
-                    intersect: false
-                },
-                plugins: {
-                    legend: {
-                        display: true,
-                        position: 'top',
-                        align: 'center',
-                        labels: {
-                            color: CHART_COLORS.text,
-                            usePointStyle: true,
-                            pointStyle: 'circle',
-                            padding: 20,
-                            font: { family: "'Outfit', sans-serif", size: 11, weight: '500' },
-                            boxWidth: 8,
-                            boxHeight: 8
-                        }
-                    },
-                    tooltip: {
-                        ...CHART_DEFAULTS.plugins.tooltip,
-                        callbacks: {
-                            title: function(context) {
-                                if (context[0] && context[0].parsed.x) {
-                                    return new Date(context[0].parsed.x).toLocaleString();
-                                }
-                                return '';
-                            },
-                            label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) label += ': ';
-                                if (context.parsed.y !== null) {
-                                    if (context.dataset.yAxisID === 'y-hashrate') {
-                                        const val = context.parsed.y;
-                                        if (val >= 1000) {
-                                            label += (val / 1000).toFixed(2) + ' PH/s';
-                                        } else {
-                                            label += val.toFixed(2) + ' TH/s';
-                                        }
-                                    } else {
-                                        label += context.parsed.y.toFixed(1) + '°C';
-                                    }
-                                }
-                                return label;
-                            }
-                        }
+        // Chart data and options
+        const chartData = { datasets };
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,  // Short animation for smooth updates
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    align: 'center',
+                    labels: {
+                        color: CHART_COLORS.text,
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        padding: 20,
+                        font: { family: "'Outfit', sans-serif", size: 11, weight: '500' },
+                        boxWidth: 8,
+                        boxHeight: 8
                     }
                 },
-                scales: {
-                    x: {
-                        type: 'time',
-                        time: {
-                            unit: hours <= 1 ? 'minute' : hours <= 6 ? 'hour' : hours <= 24 ? 'hour' : 'day',
-                            displayFormats: {
-                                minute: 'h:mm a',
-                                hour: 'ha',
-                                day: 'MMM d'
+                tooltip: {
+                    ...CHART_DEFAULTS.plugins.tooltip,
+                    callbacks: {
+                        title: function(context) {
+                            if (context[0] && context[0].parsed.x) {
+                                return new Date(context[0].parsed.x).toLocaleString();
                             }
+                            return '';
                         },
-                        min: new Date(Date.now() - hours * 60 * 60 * 1000),
-                        max: new Date(),
-                        ticks: {
-                            color: CHART_COLORS.text,
-                            font: { size: 10 },
-                            maxTicksLimit: 8
-                        },
-                        grid: { color: CHART_COLORS.grid }
-                    },
-                    'y-hashrate': {
-                        type: 'linear',
-                        position: 'left',
-                        min: hashrateAxisMin,
-                        max: hashrateAxisMax,
-                        title: {
-                            display: true,
-                            text: unitInfo.label,
-                            color: '#e74c3c',
-                            font: { size: 11, weight: '600' }
-                        },
-                        ticks: {
-                            color: '#e74c3c',
-                            font: { size: 10 },
-                            callback: function(value) {
-                                if (unitInfo.divisor > 1) {
-                                    return (value / unitInfo.divisor).toFixed(1) + ' ' + unitInfo.suffix;
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) label += ': ';
+                            if (context.parsed.y !== null) {
+                                if (context.dataset.yAxisID === 'y-hashrate') {
+                                    const val = context.parsed.y;
+                                    if (val >= 1000) {
+                                        label += (val / 1000).toFixed(2) + ' PH/s';
+                                    } else {
+                                        label += val.toFixed(2) + ' TH/s';
+                                    }
+                                } else {
+                                    label += context.parsed.y.toFixed(1) + '°C';
                                 }
-                                return value.toFixed(2) + ' TH/s';
                             }
-                        },
-                        grid: {
-                            color: CHART_COLORS.grid,
-                            drawOnChartArea: true
-                        }
-                    },
-                    'y-temperature': {
-                        type: 'linear',
-                        position: 'right',
-                        min: tempAxisMin,
-                        max: tempAxisMax,
-                        title: {
-                            display: true,
-                            text: 'Temperature',
-                            color: 'rgba(255, 255, 255, 0.7)',
-                            font: { size: 11, weight: '600' }
-                        },
-                        ticks: {
-                            color: 'rgba(255, 255, 255, 0.7)',
-                            font: { size: 10 },
-                            callback: function(value) {
-                                return value + '°C';
-                            }
-                        },
-                        grid: {
-                            drawOnChartArea: false
+                            return label;
                         }
                     }
                 }
+            },
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: hours <= 1 ? 'minute' : hours <= 6 ? 'hour' : hours <= 24 ? 'hour' : 'day',
+                        displayFormats: {
+                            minute: 'h:mm a',
+                            hour: 'ha',
+                            day: 'MMM d'
+                        }
+                    },
+                    // Auto-scale to fit data
+                    ticks: {
+                        color: CHART_COLORS.text,
+                        font: { size: 10 },
+                        maxTicksLimit: 8
+                    },
+                    grid: { color: CHART_COLORS.grid }
+                },
+                'y-hashrate': {
+                    type: 'linear',
+                    position: 'left',
+                    min: hashrateAxisMin,
+                    max: hashrateAxisMax,
+                    title: {
+                        display: true,
+                        text: unitInfo.label,
+                        color: '#e74c3c',
+                        font: { size: 11, weight: '600' }
+                    },
+                    ticks: {
+                        color: '#e74c3c',
+                        font: { size: 10 },
+                        callback: function(value) {
+                            if (unitInfo.divisor > 1) {
+                                return (value / unitInfo.divisor).toFixed(1) + ' ' + unitInfo.suffix;
+                            }
+                            return value.toFixed(2) + ' TH/s';
+                        }
+                    },
+                    grid: {
+                        color: CHART_COLORS.grid,
+                        drawOnChartArea: true
+                    }
+                },
+                'y-temperature': {
+                    type: 'linear',
+                    position: 'right',
+                    min: tempAxisMin,
+                    max: tempAxisMax,
+                    title: {
+                        display: true,
+                        text: 'Temperature',
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        font: { size: 11, weight: '600' }
+                    },
+                    ticks: {
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        font: { size: 10 },
+                        callback: function(value) {
+                            return value + '°C';
+                        }
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
             }
-        });
+        };
+
+        // Update existing chart or create new one (prevents flickering)
+        if (chartInstances.fleetCombined) {
+            // Update data arrays in place to prevent flicker
+            updateChartData(chartInstances.fleetCombined, chartData, chartOptions);
+        } else {
+            // First time - create the chart
+            const canvas = document.getElementById('fleet-combined-chart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            chartInstances.fleetCombined = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: chartOptions
+            });
+        }
+        // Keep legacy reference in sync
+        fleetCombinedChart = chartInstances.fleetCombined;
     } catch (error) {
+        // Ignore abort errors (expected when user changes timeframe quickly)
+        if (error.name === 'AbortError') return;
         console.error('Error loading fleet combined chart:', error);
     }
 }
@@ -3328,7 +3345,7 @@ async function loadFleetCombinedChart(hours = 6) {
 // PHASE 4: CHARTS, ALERTS, AND WEATHER
 // ============================================================================
 
-// Chart instances
+// Chart instances (legacy variables - kept for compatibility)
 let combinedChart = null;
 let fleetCombinedChart = null;
 let powerChart = null;
@@ -3336,6 +3353,138 @@ let profitabilityChart = null;
 let efficiencyChart = null;
 let sharesChart = null;
 let energyConsumptionChart = null;
+
+// ============================================================================
+// CHART MANAGEMENT INFRASTRUCTURE - Prevents flickering and race conditions
+// ============================================================================
+
+// Centralized chart instance management
+const chartInstances = {
+    fleetCombined: null,
+    combined: null,
+    power: null,
+    profitability: null,
+    efficiency: null,
+    shares: null,
+    energyConsumption: null
+};
+
+// Abort controllers for request cancellation on timeframe changes
+const chartAbortControllers = {
+    fleetCombined: null,
+    combined: null,
+    power: null,
+    profitability: null,
+    efficiency: null,
+    shares: null,
+    energyConsumption: null
+};
+
+// Mining-specific color palette (standardized from mining-chart-design skill)
+const MINING_COLORS = {
+    healthy: '#10B981',
+    warning: '#F59E0B',
+    critical: '#EF4444',
+    neutral: '#6B7280',
+    hashrate: '#10B981',
+    temperature: '#F97316',
+    power: '#F59E0B',
+    efficiency: '#8B5CF6',
+    profit: '#10B981',
+    loss: '#EF4444',
+    hashrateFill: 'rgba(16, 185, 129, 0.2)',
+    temperatureFill: 'rgba(249, 115, 22, 0.2)',
+    powerFill: 'rgba(245, 158, 11, 0.2)'
+};
+
+// Visibility state for pausing updates when tab is hidden
+let chartsVisible = true;
+
+// Cancel pending chart request and return new abort signal
+function cancelChartRequest(chartName) {
+    if (chartAbortControllers[chartName]) {
+        chartAbortControllers[chartName].abort();
+    }
+    chartAbortControllers[chartName] = new AbortController();
+    return chartAbortControllers[chartName].signal;
+}
+
+// Update chart data without destroying (prevents flickering)
+function updateChartData(chartInstance, newData, newOptions = null) {
+    if (!chartInstance) return false;
+
+    // Update labels in place (if present)
+    if (newData.labels) {
+        chartInstance.data.labels.length = 0;
+        chartInstance.data.labels.push(...newData.labels);
+    }
+
+    // Update each dataset's data array in place (prevents flicker)
+    newData.datasets.forEach((newDataset, i) => {
+        if (chartInstance.data.datasets[i]) {
+            // Update data array in place
+            chartInstance.data.datasets[i].data.length = 0;
+            chartInstance.data.datasets[i].data.push(...newDataset.data);
+            // Update other dataset properties
+            Object.keys(newDataset).forEach(key => {
+                if (key !== 'data') {
+                    chartInstance.data.datasets[i][key] = newDataset[key];
+                }
+            });
+        }
+    });
+
+    // Optionally update options (merge with existing)
+    if (newOptions) {
+        Object.assign(chartInstance.options, newOptions);
+    }
+
+    // Use 'none' mode to prevent animation on frequent updates
+    chartInstance.update('none');
+    return true;
+}
+
+// Initialize chart only once, return existing instance if available
+function initializeChart(chartName, canvasId, config) {
+    // Return existing instance if already created
+    if (chartInstances[chartName]) {
+        return chartInstances[chartName];
+    }
+
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return null;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    chartInstances[chartName] = new Chart(ctx, config);
+    return chartInstances[chartName];
+}
+
+// Pause chart updates when tab is hidden to save resources
+document.addEventListener('visibilitychange', () => {
+    chartsVisible = !document.hidden;
+    if (chartsVisible) {
+        // Tab became visible - refresh charts that may have stale data
+        refreshVisibleCharts();
+    }
+});
+
+// Refresh currently visible charts when tab becomes active
+function refreshVisibleCharts() {
+    if (!chartsVisible) return;
+
+    // Only refresh if on a tab that has charts
+    if (currentTab === 'fleet') {
+        const fleetChartHours = parseInt(document.getElementById('fleet-chart-timerange')?.value) || 6;
+        loadFleetCombinedChart(fleetChartHours);
+    } else if (currentTab === 'charts') {
+        loadChartsTab();
+    } else if (currentTab === 'energy') {
+        const energyHours = parseInt(document.getElementById('energy-chart-timerange')?.value) || 168;
+        loadEnergyConsumptionChart(energyHours);
+    }
+}
 
 // Load Charts Tab - reads each chart's individual time range
 async function loadChartsTab() {
@@ -3357,11 +3506,17 @@ async function loadChartsTab() {
 
 // Load Combined Hashrate & Temperature Chart (AxeOS-style)
 async function loadCombinedChart(hours = 24) {
+    // Skip updates when tab is hidden
+    if (!chartsVisible) return;
+
+    // Cancel any pending request for this chart
+    const signal = cancelChartRequest('combined');
+
     try {
-        // Fetch both temperature and hashrate data in parallel
+        // Fetch both temperature and hashrate data in parallel with abort support
         const [tempResponse, hashrateResponse] = await Promise.all([
-            fetch(`${API_BASE}/api/history/temperature?hours=${hours}`),
-            fetch(`${API_BASE}/api/history/hashrate?hours=${hours}`)
+            fetch(`${API_BASE}/api/history/temperature?hours=${hours}`, { signal }),
+            fetch(`${API_BASE}/api/history/hashrate?hours=${hours}`, { signal })
         ]);
 
         const tempResult = await tempResponse.json();
@@ -3371,8 +3526,6 @@ async function loadCombinedChart(hours = 24) {
             console.error('Error loading chart data');
             return;
         }
-
-        const ctx = document.getElementById('combined-chart').getContext('2d');
 
         // Group hashrate data by miner IP (per-miner hashrates)
         const minerHashrateData = {};
@@ -3450,18 +3603,18 @@ async function loadCombinedChart(hours = 24) {
                     data: minerHashrateData[ip],
                     borderColor: color,
                     backgroundColor: color + '15',
-                    borderWidth: 1.5,
+                    borderWidth: 1,
                     fill: false,
                     tension: 0.3,
                     yAxisID: 'y-hashrate',
                     order: 1,
-                    pointRadius: 1,
+                    pointRadius: 0,
                     pointHoverRadius: 3,
                     pointBackgroundColor: color,
                     pointBorderColor: color,
                     pointBorderWidth: 0,
                     metricType: 'hashrate',
-                    spanGaps: false
+                    spanGaps: true
                 });
             }
         });
@@ -3477,149 +3630,165 @@ async function loadCombinedChart(hours = 24) {
                     data: minerTempData[ip],
                     borderColor: color,
                     backgroundColor: 'transparent',
-                    borderWidth: 2,
+                    borderWidth: 1,
                     fill: false,
                     tension: 0.3,
                     yAxisID: 'y-temperature',
                     order: 2,
-                    pointRadius: 1,
+                    pointRadius: 0,
                     pointHoverRadius: 3,
                     pointBackgroundColor: color,
                     pointBorderColor: color,
                     pointBorderWidth: 0,
                     borderDash: [8, 4],
                     metricType: 'temperature',
-                    spanGaps: false
+                    spanGaps: true
                 });
             }
         });
 
-        // Destroy existing chart
-        if (combinedChart) {
-            combinedChart.destroy();
-        }
-
-        // Create new dual-axis chart
-        combinedChart = new Chart(ctx, {
-            type: 'line',
-            data: { datasets },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: false,
-                interaction: {
-                    mode: 'nearest',
-                    intersect: false
+        // Chart data and options
+        const chartData = { datasets };
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,  // Short animation for smooth updates
+            interaction: {
+                mode: 'nearest',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    display: false  // Hide legend - names shown on hover only
                 },
-                plugins: {
-                    legend: {
-                        display: false  // Hide legend - names shown on hover only
-                    },
-                    tooltip: {
-                        ...CHART_DEFAULTS.plugins.tooltip,
-                        callbacks: {
-                            title: function(context) {
-                                // Show timestamp
-                                if (context[0] && context[0].parsed.x) {
-                                    return new Date(context[0].parsed.x).toLocaleString();
-                                }
-                                return '';
-                            },
-                            label: function(context) {
-                                let label = context.dataset.label || '';
-                                if (label) {
-                                    label += ': ';
-                                }
-                                if (context.parsed.y !== null) {
-                                    if (context.dataset.yAxisID === 'y-hashrate') {
-                                        const val = context.parsed.y;
-                                        if (val >= 1000) {
-                                            label += (val / 1000).toFixed(2) + ' PH/s';
-                                        } else {
-                                            label += val.toFixed(2) + ' TH/s';
-                                        }
+                tooltip: {
+                    ...CHART_DEFAULTS.plugins.tooltip,
+                    callbacks: {
+                        title: function(context) {
+                            // Show timestamp
+                            if (context[0] && context[0].parsed.x) {
+                                return new Date(context[0].parsed.x).toLocaleString();
+                            }
+                            return '';
+                        },
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                if (context.dataset.yAxisID === 'y-hashrate') {
+                                    const val = context.parsed.y;
+                                    if (val >= 1000) {
+                                        label += (val / 1000).toFixed(2) + ' PH/s';
                                     } else {
-                                        label += context.parsed.y.toFixed(1) + '°C';
+                                        label += val.toFixed(2) + ' TH/s';
                                     }
+                                } else {
+                                    label += context.parsed.y.toFixed(1) + '°C';
                                 }
-                                return label;
                             }
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        type: 'time',
-                        time: {
-                            unit: hours <= 24 ? 'hour' : 'day'
-                        },
-                        // Set explicit bounds to prevent chart from extending past data
-                        min: new Date(Date.now() - hours * 60 * 60 * 1000),
-                        max: new Date(),
-                        ticks: { color: CHART_COLORS.text, font: { size: 11 } },
-                        grid: { color: CHART_COLORS.grid }
-                    },
-                    'y-hashrate': {
-                        type: 'linear',
-                        position: 'left',
-                        min: hashrateAxisMin,
-                        max: hashrateAxisMax,
-                        title: {
-                            display: true,
-                            text: unitInfo.label,
-                            color: CHART_COLORS.hashrate.line,
-                            font: { size: 12, weight: '600' }
-                        },
-                        ticks: {
-                            color: CHART_COLORS.hashrate.line,
-                            font: { size: 11 },
-                            callback: function(value) {
-                                if (unitInfo.divisor > 1) {
-                                    return (value / unitInfo.divisor).toFixed(1);
-                                }
-                                return value.toFixed(1);
-                            }
-                        },
-                        grid: {
-                            color: CHART_COLORS.grid,
-                            drawOnChartArea: true
-                        }
-                    },
-                    'y-temperature': {
-                        type: 'linear',
-                        position: 'right',
-                        min: 0,
-                        max: 100,
-                        title: {
-                            display: true,
-                            text: 'Temperature (°C)',
-                            color: CHART_COLORS.temperature.line,
-                            font: { size: 12, weight: '600' }
-                        },
-                        ticks: {
-                            color: CHART_COLORS.temperature.line,
-                            font: { size: 11 },
-                            stepSize: 20,
-                            callback: function(value) {
-                                return value + '°C';
-                            }
-                        },
-                        grid: {
-                            drawOnChartArea: false
+                            return label;
                         }
                     }
                 }
+            },
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: hours <= 24 ? 'hour' : 'day'
+                    },
+                    // Set explicit bounds to prevent chart from extending past data
+                    // Auto-scale to fit data
+                    ticks: { color: CHART_COLORS.text, font: { size: 11 } },
+                    grid: { color: CHART_COLORS.grid }
+                },
+                'y-hashrate': {
+                    type: 'linear',
+                    position: 'left',
+                    min: hashrateAxisMin,
+                    max: hashrateAxisMax,
+                    title: {
+                        display: true,
+                        text: unitInfo.label,
+                        color: CHART_COLORS.hashrate.line,
+                        font: { size: 12, weight: '600' }
+                    },
+                    ticks: {
+                        color: CHART_COLORS.hashrate.line,
+                        font: { size: 11 },
+                        callback: function(value) {
+                            if (unitInfo.divisor > 1) {
+                                return (value / unitInfo.divisor).toFixed(1);
+                            }
+                            return value.toFixed(1);
+                        }
+                    },
+                    grid: {
+                        color: CHART_COLORS.grid,
+                        drawOnChartArea: true
+                    }
+                },
+                'y-temperature': {
+                    type: 'linear',
+                    position: 'right',
+                    min: 0,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: 'Temperature (°C)',
+                        color: CHART_COLORS.temperature.line,
+                        font: { size: 12, weight: '600' }
+                    },
+                    ticks: {
+                        color: CHART_COLORS.temperature.line,
+                        font: { size: 11 },
+                        stepSize: 20,
+                        callback: function(value) {
+                            return value + '°C';
+                        }
+                    },
+                    grid: {
+                        drawOnChartArea: false
+                    }
+                }
             }
-        });
+        };
+
+        // Update existing chart or create new one (prevents flickering)
+        if (chartInstances.combined) {
+            updateChartData(chartInstances.combined, chartData, chartOptions);
+        } else {
+            const canvas = document.getElementById('combined-chart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            chartInstances.combined = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: chartOptions
+            });
+        }
+        // Keep legacy reference in sync
+        combinedChart = chartInstances.combined;
     } catch (error) {
+        if (error.name === 'AbortError') return;
         console.error('Error loading combined chart:', error);
     }
 }
 
 // Load Power Chart
 async function loadPowerChart(hours = 24) {
+    // Skip updates when tab is hidden
+    if (!chartsVisible) return;
+
+    // Cancel any pending request for this chart
+    const signal = cancelChartRequest('power');
+
     try {
-        const response = await fetch(`${API_BASE}/api/history/power?hours=${hours}`);
+        const response = await fetch(`${API_BASE}/api/history/power?hours=${hours}`, { signal });
         const result = await response.json();
 
         if (!result.success) {
@@ -3627,97 +3796,122 @@ async function loadPowerChart(hours = 24) {
             return;
         }
 
-        const ctx = document.getElementById('power-chart').getContext('2d');
-
         // Prepare data - filter out null/invalid values
         const validData = result.data.filter(point => point.power != null && point.power > 0);
         const labels = validData.map(point => new Date(point.timestamp));
-        const data = validData.map(point => point.power);
+        let data = validData.map(point => point.power);
+
+        // Apply EMA smoothing to eliminate sharp steps/discontinuities
+        if (data.length > 1) {
+            const alpha = 0.4; // Smoothing factor (higher = less smoothing)
+            let ema = data[0];
+            for (let i = 0; i < data.length; i++) {
+                ema = alpha * data[i] + (1 - alpha) * ema;
+                data[i] = ema;
+            }
+        }
 
         // Calculate adaptive power axis
         const maxPower = data.length > 0 ? Math.max(...data) : 100;
         const powerAxisMax = getAdaptiveAxisMax(maxPower);
 
-        // Destroy existing chart
-        if (powerChart) {
-            powerChart.destroy();
-        }
-
-        // Create new chart
-        powerChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels,
-                datasets: [{
-                    label: 'Fleet Power',
-                    data,
-                    borderColor: CHART_COLORS.power.line,
-                    backgroundColor: CHART_COLORS.power.fill,
-                    fill: true,
-                    tension: 0.35,
-                    borderWidth: 1.5,
-                    pointRadius: 1,
-                    pointHoverRadius: 3,
-                    pointBackgroundColor: CHART_COLORS.power.line,
-                    pointBorderColor: CHART_COLORS.power.line,
-                    pointBorderWidth: 0,
-                    spanGaps: false
-                }]
-            },
-            options: {
-                ...CHART_DEFAULTS,
-                plugins: {
-                    ...CHART_DEFAULTS.plugins,
-                    tooltip: {
-                        ...CHART_DEFAULTS.plugins.tooltip,
-                        callbacks: {
-                            label: function(context) {
-                                const watts = context.parsed.y;
-                                const kw = (watts / 1000).toFixed(2);
-                                return `Power: ${watts.toFixed(0)} W (${kw} kW)`;
-                            }
+        // Chart data and options
+        const chartData = {
+            labels,
+            datasets: [{
+                label: 'Fleet Power',
+                data,
+                borderColor: CHART_COLORS.power.line,
+                backgroundColor: CHART_COLORS.power.fill,
+                fill: true,
+                tension: 0.35,
+                borderWidth: 1,
+                pointRadius: 0,
+                pointHoverRadius: 3,
+                pointBackgroundColor: CHART_COLORS.power.line,
+                pointBorderColor: CHART_COLORS.power.line,
+                pointBorderWidth: 0,
+                spanGaps: true  // Connect across data gaps for visual continuity
+            }]
+        };
+        const chartOptions = {
+            ...CHART_DEFAULTS,
+            animation: false,
+            plugins: {
+                ...CHART_DEFAULTS.plugins,
+                tooltip: {
+                    ...CHART_DEFAULTS.plugins.tooltip,
+                    callbacks: {
+                        label: function(context) {
+                            const watts = context.parsed.y;
+                            const kw = (watts / 1000).toFixed(2);
+                            return `Power: ${watts.toFixed(0)} W (${kw} kW)`;
                         }
                     }
+                }
+            },
+            scales: {
+                x: {
+                    type: 'time',
+                    time: { unit: hours <= 24 ? 'hour' : 'day' },
+                    // Auto-scale to fit data
+                    ticks: { color: CHART_COLORS.text, font: { size: 11 } },
+                    grid: { color: CHART_COLORS.grid }
                 },
-                scales: {
-                    x: {
-                        type: 'time',
-                        time: { unit: hours <= 24 ? 'hour' : 'day' },
-                        min: new Date(Date.now() - hours * 60 * 60 * 1000),
-                        max: new Date(),
-                        ticks: { color: CHART_COLORS.text, font: { size: 11 } },
-                        grid: { color: CHART_COLORS.grid }
+                y: {
+                    beginAtZero: true,
+                    max: powerAxisMax,
+                    title: {
+                        display: true,
+                        text: powerAxisMax >= 1000 ? 'Power (kW)' : 'Power (W)',
+                        color: CHART_COLORS.power.line,
+                        font: { size: 12, weight: '600' }
                     },
-                    y: {
-                        beginAtZero: true,
-                        max: powerAxisMax,
-                        title: {
-                            display: true,
-                            text: powerAxisMax >= 1000 ? 'Power (kW)' : 'Power (W)',
-                            color: CHART_COLORS.power.line,
-                            font: { size: 12, weight: '600' }
-                        },
-                        ticks: {
-                            color: CHART_COLORS.power.line,
-                            font: { size: 11 },
-                            callback: function(value) {
-                                return value >= 1000 ? (value/1000).toFixed(1) : value.toFixed(0);
-                            }
-                        },
-                        grid: { color: CHART_COLORS.grid }
-                    }
+                    ticks: {
+                        color: CHART_COLORS.power.line,
+                        font: { size: 11 },
+                        callback: function(value) {
+                            return value >= 1000 ? (value/1000).toFixed(1) : value.toFixed(0);
+                        }
+                    },
+                    grid: { color: CHART_COLORS.grid }
                 }
             }
-        });
+        };
+
+        // Update existing chart or create new one (prevents flickering)
+        if (chartInstances.power) {
+            updateChartData(chartInstances.power, chartData, chartOptions);
+        } else {
+            const canvas = document.getElementById('power-chart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            chartInstances.power = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: chartOptions
+            });
+        }
+        // Keep legacy reference in sync
+        powerChart = chartInstances.power;
     } catch (error) {
+        if (error.name === 'AbortError') return;
         console.error('Error loading power chart:', error);
     }
 }
 
 // Load Profitability Chart
 async function loadProfitabilityChart(days = 7) {
+    // Skip updates when tab is hidden
+    if (!chartsVisible) return;
+
+    // Cancel any pending request for this chart
+    const signal = cancelChartRequest('profitability');
+
     try {
-        const response = await fetch(`${API_BASE}/api/energy/profitability/history?days=${days}`);
+        const response = await fetch(`${API_BASE}/api/energy/profitability/history?days=${days}`, { signal });
         const result = await response.json();
 
         if (!result.success) {
@@ -3725,126 +3919,149 @@ async function loadProfitabilityChart(days = 7) {
             return;
         }
 
-        const ctx = document.getElementById('profitability-chart').getContext('2d');
-
-        // Prepare data
-        const labels = result.history.map(point => new Date(point.timestamp));
-        const profitData = result.history.map(point => point.profit_per_day);
+        // Prepare data - sort by timestamp and format labels for bar chart
+        const sortedHistory = [...result.history].sort((a, b) =>
+            new Date(a.timestamp) - new Date(b.timestamp)
+        );
+        const labels = sortedHistory.map(point => {
+            const d = new Date(point.timestamp);
+            return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+        });
+        const profitData = sortedHistory.map(point => point.profit_per_day);
 
         // Calculate adaptive profit axis (handle both positive and negative)
         const maxProfit = profitData.length > 0 ? Math.max(...profitData) : 1;
         const minProfit = profitData.length > 0 ? Math.min(...profitData) : -1;
         const absMax = Math.max(Math.abs(maxProfit), Math.abs(minProfit));
-        const profitAxisMax = getAdaptiveAxisMax(absMax);
+        // Ensure minimum axis range for visibility (at least $0.50 range for small profits)
+        const minAxisRange = 0.5;
+        const adjustedAbsMax = Math.max(absMax * 1.2, minAxisRange); // 20% headroom + minimum
+        const profitAxisMax = getAdaptiveAxisMax(adjustedAbsMax);
         const profitAxisMin = minProfit < 0 ? -profitAxisMax : 0;
 
-        // Destroy existing chart
-        if (profitabilityChart) {
-            profitabilityChart.destroy();
-        }
-
-        // Create new chart
-        profitabilityChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels,
-                datasets: [{
-                    label: 'Daily Profit',
-                    data: profitData,
-                    borderColor: CHART_COLORS.profit.positive,
-                    backgroundColor: CHART_COLORS.profit.fillPositive,
-                    fill: true,
-                    tension: 0.35,
-                    borderWidth: 1.5,
-                    pointRadius: 1,
-                    pointHoverRadius: 3,
-                    pointBackgroundColor: CHART_COLORS.profit.positive,
-                    pointBorderColor: CHART_COLORS.profit.positive,
-                    pointBorderWidth: 0,
-                    segment: {
-                        borderColor: ctx => {
-                            const value = ctx.p1.parsed.y;
-                            return value >= 0 ? CHART_COLORS.profit.positive : CHART_COLORS.profit.negative;
-                        },
-                        backgroundColor: ctx => {
-                            const value = ctx.p1.parsed.y;
-                            return value >= 0 ? CHART_COLORS.profit.fillPositive : CHART_COLORS.profit.fillNegative;
-                        }
-                    }
-                }]
-            },
-            options: {
-                ...CHART_DEFAULTS,
-                plugins: {
-                    ...CHART_DEFAULTS.plugins,
-                    tooltip: {
-                        ...CHART_DEFAULTS.plugins.tooltip,
-                        callbacks: {
-                            label: function(context) {
-                                const value = context.parsed.y;
-                                const prefix = value >= 0 ? '+' : '';
-                                return `Profit: ${prefix}$${value.toFixed(2)}/day`;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        type: 'time',
-                        time: { unit: 'day' },
-                        ticks: { color: CHART_COLORS.text, font: { size: 11 } },
-                        grid: { color: CHART_COLORS.grid }
-                    },
-                    y: {
-                        min: profitAxisMin,
-                        max: profitAxisMax,
-                        title: {
-                            display: true,
-                            text: 'Profit (USD/day)',
-                            color: CHART_COLORS.profit.positive,
-                            font: { size: 12, weight: '600' }
-                        },
-                        ticks: {
-                            color: CHART_COLORS.text,
-                            font: { size: 11 },
-                            callback: function(value) {
-                                const prefix = value >= 0 ? '+' : '';
-                                return prefix + '$' + value.toFixed(2);
-                            }
-                        },
-                        grid: {
-                            color: (context) => {
-                                if (context.tick.value === 0) {
-                                    return 'rgba(148, 163, 184, 0.3)';
-                                }
-                                return CHART_COLORS.grid;
-                            },
-                            lineWidth: context => context.tick.value === 0 ? 2 : 1
+        // Chart data and options - Use BAR chart for better visibility of small values
+        const chartData = {
+            labels,
+            datasets: [{
+                label: 'Daily Profit',
+                data: profitData,
+                // Color bars based on positive/negative values
+                backgroundColor: profitData.map(v => v >= 0 ? CHART_COLORS.profit.positive : CHART_COLORS.profit.negative),
+                borderColor: profitData.map(v => v >= 0 ? CHART_COLORS.profit.positive : CHART_COLORS.profit.negative),
+                borderWidth: 1,
+                borderRadius: 4,
+                barPercentage: 0.8,
+                categoryPercentage: 0.9
+            }]
+        };
+        const chartOptions = {
+            ...CHART_DEFAULTS,
+            animation: false,
+            plugins: {
+                ...CHART_DEFAULTS.plugins,
+                tooltip: {
+                    ...CHART_DEFAULTS.plugins.tooltip,
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.parsed.y;
+                            const prefix = value >= 0 ? '+' : '';
+                            return `Profit: ${prefix}$${value.toFixed(2)}/day`;
                         }
                     }
                 }
+            },
+            scales: {
+                x: {
+                    type: 'category',
+                    ticks: {
+                        color: CHART_COLORS.text,
+                        font: { size: 9 },
+                        maxRotation: 45,
+                        autoSkip: true,
+                        maxTicksLimit: 10
+                    },
+                    grid: { display: false }
+                },
+                y: {
+                    min: profitAxisMin,
+                    max: profitAxisMax,
+                    title: {
+                        display: true,
+                        text: 'Profit (USD/day)',
+                        color: CHART_COLORS.profit.positive,
+                        font: { size: 12, weight: '600' }
+                    },
+                    ticks: {
+                        color: CHART_COLORS.text,
+                        font: { size: 11 },
+                        callback: function(value) {
+                            const prefix = value >= 0 ? '+' : '';
+                            return prefix + '$' + value.toFixed(2);
+                        }
+                    },
+                    grid: {
+                        color: (context) => {
+                            if (context.tick.value === 0) {
+                                return 'rgba(148, 163, 184, 0.3)';
+                            }
+                            return CHART_COLORS.grid;
+                        },
+                        lineWidth: context => context.tick.value === 0 ? 2 : 1
+                    }
+                }
             }
-        });
+        };
+
+        // Update existing chart or create new one
+        // Note: Must destroy and recreate if chart type changed (line -> bar)
+        const canvas = document.getElementById('profitability-chart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        // Destroy existing chart if it's the wrong type (line vs bar)
+        if (chartInstances.profitability && chartInstances.profitability.config.type !== 'bar') {
+            chartInstances.profitability.destroy();
+            chartInstances.profitability = null;
+        }
+
+        if (chartInstances.profitability) {
+            updateChartData(chartInstances.profitability, chartData, chartOptions);
+        } else {
+            chartInstances.profitability = new Chart(ctx, {
+                type: 'bar',
+                data: chartData,
+                options: chartOptions
+            });
+        }
+        // Keep legacy reference in sync
+        profitabilityChart = chartInstances.profitability;
     } catch (error) {
+        if (error.name === 'AbortError') return;
         console.error('Error loading profitability chart:', error);
     }
 }
 
 // Load Efficiency Chart
 async function loadEfficiencyChart(hours = 24) {
+    // Skip updates when tab is hidden
+    if (!chartsVisible) return;
+
+    // Cancel any pending request for this chart
+    const signal = cancelChartRequest('efficiency');
+
     try {
-        const response = await fetch(`${API_BASE}/api/history/hashrate?hours=${hours}`);
+        const response = await fetch(`${API_BASE}/api/history/hashrate?hours=${hours}`, { signal });
         const result = await response.json();
 
         if (!result.success) return;
-
-        const ctx = document.getElementById('efficiency-chart').getContext('2d');
 
         // Use totals data for efficiency calculation (contains total_power)
         const totalsData = result.totals || result.data;
 
         // Calculate efficiency in J/TH (industry standard, lower is better)
-        const efficiencyData = totalsData
+        // First pass: calculate all efficiency values
+        let rawEfficiencyData = totalsData
             .filter(point => point.hashrate_ths > 0 && point.total_power > 0)
             .map(point => {
                 const efficiency = point.total_power / point.hashrate_ths; // W/TH
@@ -3854,92 +4071,161 @@ async function loadEfficiencyChart(hours = 24) {
                 };
             });
 
-        // Calculate adaptive efficiency axis
-        const maxEfficiency = efficiencyData.length > 0
-            ? Math.max(...efficiencyData.map(d => d.y).filter(v => isFinite(v) && v > 0))
-            : 100;
-        const efficiencyAxisMax = getAdaptiveAxisMax(maxEfficiency || 100);
+        // OUTLIER DETECTION: Multi-method approach for robust filtering
+        // Mining efficiency typically ranges 5-50 J/TH for most hardware
+        if (rawEfficiencyData.length > 2) {
+            const values = rawEfficiencyData.map(d => d.y).sort((a, b) => a - b);
 
-        if (efficiencyChart) {
-            efficiencyChart.destroy();
-        }
+            // Calculate median (more robust than mean)
+            const mid = Math.floor(values.length / 2);
+            const median = values.length % 2 === 0
+                ? (values[mid - 1] + values[mid]) / 2
+                : values[mid];
 
-        efficiencyChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                datasets: [{
-                    label: 'Fleet Efficiency',
-                    data: efficiencyData,
-                    borderColor: CHART_COLORS.efficiency.line,
-                    backgroundColor: CHART_COLORS.efficiency.fill,
-                    fill: true,
-                    tension: 0.35,
-                    borderWidth: 1.5,
-                    pointRadius: 1,
-                    pointHoverRadius: 3,
-                    pointBackgroundColor: CHART_COLORS.efficiency.line,
-                    pointBorderColor: CHART_COLORS.efficiency.line,
-                    pointBorderWidth: 0,
-                    spanGaps: false
-                }]
-            },
-            options: {
-                ...CHART_DEFAULTS,
-                plugins: {
-                    ...CHART_DEFAULTS.plugins,
-                    tooltip: {
-                        ...CHART_DEFAULTS.plugins.tooltip,
-                        callbacks: {
-                            label: function(context) {
-                                return `Efficiency: ${context.parsed.y.toFixed(1)} J/TH`;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        type: 'time',
-                        time: { unit: hours <= 24 ? 'hour' : 'day' },
-                        min: new Date(Date.now() - hours * 60 * 60 * 1000),
-                        max: new Date(),
-                        ticks: { color: CHART_COLORS.text, font: { size: 11 } },
-                        grid: { color: CHART_COLORS.grid }
-                    },
-                    y: {
-                        beginAtZero: true,
-                        max: efficiencyAxisMax,
-                        title: {
-                            display: true,
-                            text: 'Efficiency (J/TH)',
-                            color: CHART_COLORS.efficiency.line,
-                            font: { size: 12, weight: '600' }
-                        },
-                        ticks: {
-                            color: CHART_COLORS.efficiency.line,
-                            font: { size: 11 },
-                            callback: function(value) {
-                                return value.toFixed(1);
-                            }
-                        },
-                        grid: { color: CHART_COLORS.grid }
-                    }
+            // Method 1: IQR-based bounds (for datasets with enough points)
+            let upperBound = median * 3; // Default: 3x median
+            if (values.length >= 4) {
+                const q1 = values[Math.floor(values.length * 0.25)];
+                const q3 = values[Math.floor(values.length * 0.75)];
+                const iqr = q3 - q1;
+                // Use tighter 1.0x IQR for mining data (less variance expected)
+                upperBound = Math.min(q3 + 1.0 * iqr, median * 2.5);
+            }
+
+            // Method 2: Absolute bounds (physical constraints for mining hardware)
+            // BitAxe/NerdAxe typically 10-25 J/TH, max reasonable ~60 J/TH
+            const absoluteMax = 60;
+            upperBound = Math.min(upperBound, absoluteMax);
+            const lowerBound = Math.max(0, median * 0.3); // Allow 70% below median
+
+            // Filter outliers
+            rawEfficiencyData = rawEfficiencyData.filter(d =>
+                d.y >= lowerBound && d.y <= upperBound && d.y > 0
+            );
+
+            // Method 3: Exponential Moving Average (EMA) smoothing
+            // This eliminates spikes while preserving trends - standard data science technique
+            if (rawEfficiencyData.length > 1) {
+                const alpha = 0.3; // Smoothing factor (0.1-0.3 = heavy smoothing)
+                let ema = rawEfficiencyData[0].y;
+                for (let i = 0; i < rawEfficiencyData.length; i++) {
+                    ema = alpha * rawEfficiencyData[i].y + (1 - alpha) * ema;
+                    rawEfficiencyData[i].y = ema;
                 }
             }
-        });
+        }
+
+        const efficiencyData = rawEfficiencyData;
+
+        // Calculate adaptive efficiency axis using percentile-based scaling
+        let efficiencyAxisMax = 50; // Sensible default for mining efficiency
+        if (efficiencyData.length > 0) {
+            const sortedValues = efficiencyData.map(d => d.y).sort((a, b) => a - b);
+            // Use 95th percentile instead of max to avoid outlier influence
+            const p95 = sortedValues[Math.floor(sortedValues.length * 0.95)] || sortedValues[sortedValues.length - 1];
+            efficiencyAxisMax = getAdaptiveAxisMax(Math.max(p95 * 1.1, 10)); // 10% headroom, minimum 10
+        }
+
+        // Chart data and options
+        const chartData = {
+            datasets: [{
+                label: 'Fleet Efficiency',
+                data: efficiencyData,
+                borderColor: CHART_COLORS.efficiency.line,
+                backgroundColor: CHART_COLORS.efficiency.fill,
+                fill: true,
+                tension: 0.35,
+                borderWidth: 1,
+                pointRadius: 0,
+                pointHoverRadius: 3,
+                pointBackgroundColor: CHART_COLORS.efficiency.line,
+                pointBorderColor: CHART_COLORS.efficiency.line,
+                pointBorderWidth: 0,
+                spanGaps: true  // Connect across data gaps for visual continuity
+            }]
+        };
+        const chartOptions = {
+            ...CHART_DEFAULTS,
+            animation: false,  // Smooth transitions for scale changes
+            plugins: {
+                ...CHART_DEFAULTS.plugins,
+                tooltip: {
+                    ...CHART_DEFAULTS.plugins.tooltip,
+                    callbacks: {
+                        label: function(context) {
+                            return `Efficiency: ${context.parsed.y.toFixed(1)} J/TH`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    type: 'time',
+                    time: { unit: hours <= 24 ? 'hour' : 'day' },
+                    // Auto-scale to fit data
+                    ticks: { color: CHART_COLORS.text, font: { size: 11 } },
+                    grid: { color: CHART_COLORS.grid }
+                },
+                y: {
+                    beginAtZero: true,
+                    max: efficiencyAxisMax,
+                    title: {
+                        display: true,
+                        text: 'Efficiency (J/TH)',
+                        color: CHART_COLORS.efficiency.line,
+                        font: { size: 12, weight: '600' }
+                    },
+                    ticks: {
+                        color: CHART_COLORS.efficiency.line,
+                        font: { size: 11 },
+                        callback: function(value) {
+                            return value.toFixed(1);
+                        }
+                    },
+                    grid: { color: CHART_COLORS.grid }
+                }
+            }
+        };
+
+        // Update existing chart or create new one (prevents flickering)
+        if (chartInstances.efficiency) {
+            updateChartData(chartInstances.efficiency, chartData, chartOptions);
+        } else {
+            const canvas = document.getElementById('efficiency-chart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            chartInstances.efficiency = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: chartOptions
+            });
+        }
+        // Keep legacy reference in sync
+        efficiencyChart = chartInstances.efficiency;
     } catch (error) {
+        if (error.name === 'AbortError') return;
         console.error('Error loading efficiency chart:', error);
     }
 }
 
 // Load Shares Metrics
 async function loadSharesMetrics(hours = 24) {
+    // Skip updates when tab is hidden
+    if (!chartsVisible) return;
+
+    // Cancel any pending request for this chart
+    const signal = cancelChartRequest('shares');
+
     try {
         // Get aggregate stats for the time range
-        const aggResponse = await fetch(`${API_BASE}/api/stats/aggregate?hours=${hours}`);
-        const aggResult = await aggResponse.json();
+        const [aggResponse, response] = await Promise.all([
+            fetch(`${API_BASE}/api/stats/aggregate?hours=${hours}`, { signal }),
+            fetch(`${API_BASE}/api/stats`, { signal })
+        ]);
 
-        // Get current stats for other metrics
-        const response = await fetch(`${API_BASE}/api/stats`);
+        const aggResult = await aggResponse.json();
         const result = await response.json();
 
         if (!result.success || !aggResult.success) return;
@@ -3965,78 +4251,88 @@ async function loadSharesMetrics(hours = 24) {
         document.getElementById('accept-rate').textContent = `${acceptRate}%`;
         document.getElementById('charts-avg-temp').textContent = `${(stats.avg_temperature ?? 0).toFixed(1)}°C`;
 
-        // Create shares pie chart
-        const ctx = document.getElementById('shares-chart').getContext('2d');
-
-        if (sharesChart) {
-            sharesChart.destroy();
-        }
-
-        sharesChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: [
-                    `Accepted: ${formatNumber(totalShares)} (${acceptRate}%)`,
-                    `Rejected: ${formatNumber(totalRejected)} (${rejectRate}%)`
-                ],
-                datasets: [{
-                    data: [totalShares, totalRejected],
-                    backgroundColor: [CHART_COLORS.shares.accepted, CHART_COLORS.shares.rejected],
-                    borderWidth: 0,
-                    hoverOffset: 8,
-                    borderRadius: 4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: { duration: 300, easing: 'easeOutQuart' },
-                cutout: '65%',
-                plugins: {
-                    legend: {
-                        labels: {
-                            color: CHART_COLORS.text,
-                            font: {
-                                size: 13,
-                                weight: '500',
-                                family: "'Outfit', sans-serif"
-                            },
-                            padding: 16,
-                            usePointStyle: true,
-                            pointStyle: 'circle',
-                            generateLabels: function(chart) {
-                                const data = chart.data;
-                                if (data.labels.length && data.datasets.length) {
-                                    return data.labels.map((label, i) => {
-                                        const dataset = data.datasets[0];
-                                        return {
-                                            text: label,
-                                            fillStyle: dataset.backgroundColor[i],
-                                            fontColor: CHART_COLORS.text,
-                                            hidden: false,
-                                            index: i
-                                        };
-                                    });
-                                }
-                                return [];
-                            }
+        // Chart data and options
+        const chartData = {
+            labels: [
+                `Accepted: ${formatNumber(totalShares)} (${acceptRate}%)`,
+                `Rejected: ${formatNumber(totalRejected)} (${rejectRate}%)`
+            ],
+            datasets: [{
+                data: [totalShares, totalRejected],
+                backgroundColor: [CHART_COLORS.shares.accepted, CHART_COLORS.shares.rejected],
+                borderWidth: 0,
+                hoverOffset: 8,
+                borderRadius: 4
+            }]
+        };
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            cutout: '65%',
+            plugins: {
+                legend: {
+                    labels: {
+                        color: CHART_COLORS.text,
+                        font: {
+                            size: 13,
+                            weight: '500',
+                            family: "'Outfit', sans-serif"
                         },
-                        position: 'bottom'
-                    },
-                    tooltip: {
-                        ...CHART_DEFAULTS.plugins.tooltip,
-                        callbacks: {
-                            label: function(context) {
-                                const value = context.parsed || 0;
-                                const percentage = totalAttempts > 0 ? ((value / totalAttempts) * 100).toFixed(2) : 0;
-                                return `${formatNumber(value)} shares (${percentage}%)`;
+                        padding: 16,
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        generateLabels: function(chart) {
+                            const data = chart.data;
+                            if (data.labels.length && data.datasets.length) {
+                                return data.labels.map((label, i) => {
+                                    const dataset = data.datasets[0];
+                                    return {
+                                        text: label,
+                                        fillStyle: dataset.backgroundColor[i],
+                                        fontColor: CHART_COLORS.text,
+                                        hidden: false,
+                                        index: i
+                                    };
+                                });
                             }
+                            return [];
+                        }
+                    },
+                    position: 'bottom'
+                },
+                tooltip: {
+                    ...CHART_DEFAULTS.plugins.tooltip,
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.parsed || 0;
+                            const percentage = totalAttempts > 0 ? ((value / totalAttempts) * 100).toFixed(2) : 0;
+                            return `${formatNumber(value)} shares (${percentage}%)`;
                         }
                     }
                 }
             }
-        });
+        };
+
+        // Update existing chart or create new one (prevents flickering)
+        if (chartInstances.shares) {
+            updateChartData(chartInstances.shares, chartData, chartOptions);
+        } else {
+            const canvas = document.getElementById('shares-chart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            chartInstances.shares = new Chart(ctx, {
+                type: 'doughnut',
+                data: chartData,
+                options: chartOptions
+            });
+        }
+        // Keep legacy reference in sync
+        sharesChart = chartInstances.shares;
     } catch (error) {
+        if (error.name === 'AbortError') return;
         console.error('Error loading shares metrics:', error);
     }
 }
@@ -4237,18 +4533,24 @@ document.getElementById('energy-chart-timerange')?.addEventListener('change', ()
 
 // Load Energy Consumption History Chart
 async function loadEnergyConsumptionChart(hours = 168) {
+    // Skip updates when tab is hidden
+    if (!chartsVisible) return;
+
+    // Cancel any pending request for this chart
+    const signal = cancelChartRequest('energyConsumption');
+
     try {
-        const response = await fetch(`${API_BASE}/api/energy/consumption/actual?hours=${hours}`);
+        const response = await fetch(`${API_BASE}/api/energy/consumption/actual?hours=${hours}`, { signal });
         const data = await response.json();
 
         const canvas = document.getElementById('energy-consumption-chart');
         if (!canvas) return;
 
         if (!data.success || !data.hourly_breakdown || data.hourly_breakdown.length === 0) {
-            // No data available - clear chart but keep canvas, update summary to show no data
-            if (energyConsumptionChart) {
-                energyConsumptionChart.destroy();
-                energyConsumptionChart = null;
+            // No data available - clear chart data but keep instance, update summary to show no data
+            if (chartInstances.energyConsumption) {
+                chartInstances.energyConsumption.data.datasets[0].data = [];
+                chartInstances.energyConsumption.update('none');
             }
             document.getElementById('energy-chart-total').textContent = '0.00 kWh';
             document.getElementById('energy-chart-cost').textContent = '$0.00';
@@ -4256,11 +4558,8 @@ async function loadEnergyConsumptionChart(hours = 168) {
             return;
         }
 
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
         // Prepare chart data - aggregate by day if showing more than 48 hours
-        let chartData;
+        let chartDataPoints;
         if (hours > 48) {
             // Aggregate by day
             const dailyData = {};
@@ -4272,77 +4571,88 @@ async function loadEnergyConsumptionChart(hours = 168) {
                 dailyData[day].kwh += item.kwh;
                 dailyData[day].readings += item.readings;
             });
-            chartData = Object.entries(dailyData).map(([date, values]) => ({
+            chartDataPoints = Object.entries(dailyData).map(([date, values]) => ({
                 x: new Date(date),
                 y: values.kwh
             }));
         } else {
             // Hourly data
-            chartData = data.hourly_breakdown.map(item => ({
+            chartDataPoints = data.hourly_breakdown.map(item => ({
                 x: new Date(item.hour.replace(' ', 'T') + ':00'),
                 y: item.kwh
             }));
         }
 
-        if (energyConsumptionChart) {
-            energyConsumptionChart.destroy();
-        }
-
-        energyConsumptionChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                datasets: [{
-                    label: 'Energy Consumed',
-                    data: chartData,
-                    backgroundColor: 'rgba(0, 212, 255, 0.6)',
-                    borderColor: 'rgba(0, 212, 255, 1)',
-                    borderWidth: 1,
-                    borderRadius: 4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            title: function(context) {
-                                const date = new Date(context[0].parsed.x);
-                                return hours > 48 ? date.toLocaleDateString() : date.toLocaleString();
-                            },
-                            label: function(context) {
-                                return `Energy: ${context.parsed.y.toFixed(3)} kWh`;
-                            }
+        // Chart data and options
+        const chartData = {
+            datasets: [{
+                label: 'Energy Consumed',
+                data: chartDataPoints,
+                backgroundColor: 'rgba(0, 212, 255, 0.6)',
+                borderColor: 'rgba(0, 212, 255, 1)',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        };
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: function(context) {
+                            const date = new Date(context[0].parsed.x);
+                            return hours > 48 ? date.toLocaleDateString() : date.toLocaleString();
+                        },
+                        label: function(context) {
+                            return `Energy: ${context.parsed.y.toFixed(3)} kWh`;
                         }
                     }
-                },
-                scales: {
-                    x: {
-                        type: 'time',
-                        time: {
-                            unit: hours > 48 ? 'day' : 'hour',
-                            displayFormats: {
-                                hour: 'ha',
-                                day: 'MMM d'
-                            }
-                        },
-                        ticks: { color: CHART_COLORS.text },
-                        grid: { color: CHART_COLORS.grid }
+                }
+            },
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: hours > 48 ? 'day' : 'hour',
+                        displayFormats: {
+                            hour: 'ha',
+                            day: 'MMM d'
+                        }
                     },
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Energy (kWh)',
-                            color: CHART_COLORS.text
-                        },
-                        ticks: { color: CHART_COLORS.text },
-                        grid: { color: CHART_COLORS.grid }
-                    }
+                    ticks: { color: CHART_COLORS.text },
+                    grid: { color: CHART_COLORS.grid }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Energy (kWh)',
+                        color: CHART_COLORS.text
+                    },
+                    ticks: { color: CHART_COLORS.text },
+                    grid: { color: CHART_COLORS.grid }
                 }
             }
-        });
+        };
+
+        // Update existing chart or create new one (prevents flickering)
+        if (chartInstances.energyConsumption) {
+            updateChartData(chartInstances.energyConsumption, chartData, chartOptions);
+        } else {
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            chartInstances.energyConsumption = new Chart(ctx, {
+                type: 'bar',
+                data: chartData,
+                options: chartOptions
+            });
+        }
+        // Keep legacy reference in sync
+        energyConsumptionChart = chartInstances.energyConsumption;
 
         // Update summary
         const totalKwh = data.total_kwh || 0;
@@ -4355,6 +4665,7 @@ async function loadEnergyConsumptionChart(hours = 168) {
         document.getElementById('energy-chart-avg').textContent = `${avgDaily.toFixed(2)} kWh`;
 
     } catch (error) {
+        if (error.name === 'AbortError') return;
         console.error('Error loading energy consumption chart:', error);
     }
 }

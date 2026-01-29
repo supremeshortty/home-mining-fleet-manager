@@ -3121,15 +3121,15 @@ def add_mock_miners():
         },
         {
             'ip': '10.0.0.104',
-            'type': 'NerdAxe',
-            'model': 'NerdAxe',
+            'type': 'LuckyMiner',
+            'model': 'LuckyMiner',
             'custom_name': 'Basement Solo',
             'status': {
-                'hashrate': 502e9,  # 502 GH/s (BM1366)
-                'temperature': 51.8,
-                'power': 12.0,  # ~24 J/TH efficiency
-                'fan_speed': 40,
-                'frequency': 490,
+                'hashrate': 485e9,  # 485 GH/s (BM1366)
+                'temperature': 53.2,
+                'power': 11.5,  # ~24 J/TH efficiency
+                'fan_speed': 42,
+                'frequency': 480,
                 'voltage': 1200,
                 'status': 'online',
                 'asic_model': 'BM1366',
@@ -3139,34 +3139,34 @@ def add_mock_miners():
                 'best_difficulty': 1800000,  # 1.8M
                 'session_difficulty': 1200000,  # 1.2M (current session)
                 'uptime_seconds': 259200,
-                'hostname': 'nerdaxe-1',
-                'firmware': 'v1.2.0',
-                'raw': {'ASICModel': 'BM1366', 'ASICCount': 1, 'frequency': 490, 'coreVoltage': 1200, 'fanSpeedPercent': 40}
+                'hostname': 'luckyminer-1',
+                'firmware': 'esp-miner-v2.1.0',
+                'raw': {'ASICModel': 'BM1366', 'ASICCount': 1, 'frequency': 480, 'coreVoltage': 1200, 'fanSpeedPercent': 42}
             }
         },
         {
             'ip': '10.0.0.105',
-            'type': 'BitAxe Supra',
-            'model': 'BitAxe Supra',
-            'custom_name': None,  # No custom name
+            'type': 'Whatsminer',
+            'model': 'Whatsminer M30S',
+            'custom_name': 'Basement ASIC',
             'status': {
-                'hashrate': 658e9,  # 658 GH/s (BM1368)
-                'temperature': 53.5,
-                'power': 14.5,  # ~22 J/TH efficiency
-                'fan_speed': 48,
-                'frequency': 525,
-                'voltage': 1200,
+                'hashrate': 86e12,  # 86 TH/s (M30S)
+                'temperature': 62.5,
+                'power': 3268,  # ~38 J/TH efficiency
+                'fan_speed': 4800,  # RPM
+                'frequency': 0,
+                'voltage': 0,
                 'status': 'online',
-                'asic_model': 'BM1368',
-                'asic_count': 1,
-                'shares_accepted': 1102,
-                'shares_rejected': 5,
-                'best_difficulty': 2200000,  # 2.2M
-                'session_difficulty': 2200000,  # Same as best (just booted)
-                'uptime_seconds': 7200,
-                'hostname': 'bitaxe-supra',
-                'firmware': 'v2.3.0',
-                'raw': {'ASICModel': 'BM1368', 'ASICCount': 1, 'frequency': 525, 'coreVoltage': 1200, 'fanSpeedPercent': 48}
+                'asic_model': 'BM1398',
+                'asic_count': 156,  # 3 hashboards x 52 chips
+                'shares_accepted': 45678,
+                'shares_rejected': 89,
+                'best_difficulty': 125000000,  # 125M
+                'session_difficulty': 125000000,
+                'uptime_seconds': 604800,
+                'hostname': 'whatsminer-m30s',
+                'firmware': 'M30S-202012221842-sig',
+                'raw': {'summary': {'SUMMARY': [{'MHS av': 86000000}]}, 'devs': {'DEVS': [{'Temperature': 62.5}]}}
             }
         },
         {
