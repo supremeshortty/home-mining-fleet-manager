@@ -23,6 +23,14 @@ from energy import (
 from thermal import ThermalManager
 from alerts import AlertManager
 from weather import WeatherManager
+from metrics import (
+    SatsEarnedTracker,
+    MinerHealthMonitor,
+    PowerEfficiencyMatrix,
+    PoolPerformanceComparator,
+    PredictiveRevenueModel
+)
+from telegram_setup_helper import TelegramSetupHelper
 
 # Setup logging
 logging.basicConfig(
@@ -72,8 +80,18 @@ class FleetManager:
         # Alert system
         self.alert_mgr = AlertManager(self.db)
 
+        # Telegram setup helper
+        self.telegram_helper = TelegramSetupHelper(self.db)
+
         # Weather integration
         self.weather_mgr = WeatherManager(self.db)
+
+        # Metrics and analytics
+        self.sats_tracker = SatsEarnedTracker(self.db)
+        self.health_monitor = MinerHealthMonitor(self.db)
+        self.efficiency_matrix = PowerEfficiencyMatrix(self.db)
+        self.pool_comparator = PoolPerformanceComparator(self.db)
+        self.revenue_model = PredictiveRevenueModel(self.db, self.btc_fetcher)
 
         # Track miner states for alert deduplication
         self.miner_alert_states = {}  # ip -> {'last_offline_alert': timestamp, 'last_temp_alert': timestamp}
@@ -2883,6 +2901,122 @@ def test_alert():
         }), 500
 
 
+# Telegram Setup Helper Routes
+
+@app.route('/api/telegram/setup-instructions', methods=['GET'])
+def telegram_setup_instructions():
+    """Get Telegram setup instructions"""
+    try:
+        return jsonify({
+            'success': True,
+            'instructions': fleet.telegram_helper.get_setup_instructions(),
+            'quick_reference': fleet.telegram_helper.get_quick_reference()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/telegram/validate', methods=['POST'])
+def validate_telegram():
+    """Validate bot token and/or chat ID"""
+    try:
+        data = request.get_json() or {}
+        bot_token = data.get('bot_token')
+        chat_id = data.get('chat_id')
+
+        result = {
+            'success': True,
+            'timestamp': datetime.now().isoformat()
+        }
+
+        if bot_token:
+            is_valid, msg = fleet.telegram_helper.validate_bot_token(bot_token)
+            result['token_status'] = {
+                'valid': is_valid,
+                'message': msg
+            }
+
+        if bot_token and chat_id:
+            is_valid, msg = fleet.telegram_helper.validate_chat_id(bot_token, chat_id)
+            result['chat_id_status'] = {
+                'valid': is_valid,
+                'message': msg
+            }
+
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error validating Telegram config: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/telegram/status-report', methods=['POST'])
+def telegram_status_report():
+    """Get detailed Telegram setup status report"""
+    try:
+        data = request.get_json() or {}
+        bot_token = data.get('bot_token', '')
+        chat_id = data.get('chat_id', '')
+
+        if not bot_token or not chat_id:
+            return jsonify({
+                'success': False,
+                'error': 'Both bot_token and chat_id required'
+            }), 400
+
+        report = fleet.telegram_helper.get_status_report(bot_token, chat_id)
+        return jsonify({
+            'success': True,
+            'report': report
+        })
+    except Exception as e:
+        logger.error(f"Error generating status report: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/telegram/save-config', methods=['POST'])
+def save_telegram_config():
+    """Save and validate Telegram configuration"""
+    try:
+        data = request.get_json() or {}
+        bot_token = data.get('bot_token')
+        chat_id = data.get('chat_id')
+
+        if not bot_token or not chat_id:
+            return jsonify({
+                'success': False,
+                'error': 'Both bot_token and chat_id required'
+            }), 400
+
+        success, msg = fleet.telegram_helper.save_config(bot_token, chat_id)
+
+        # Also update alert manager
+        fleet.alert_mgr.configure(
+            telegram_bot_token=bot_token,
+            telegram_chat_id=chat_id,
+            telegram_enabled=True
+        )
+
+        return jsonify({
+            'success': success,
+            'message': msg
+        })
+    except Exception as e:
+        logger.error(f"Error saving Telegram config: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 # Weather Integration Routes
 
 @app.route('/api/weather/config', methods=['GET', 'POST'])
@@ -3396,6 +3530,75 @@ def clear_mock_miners():
         logger.info(f"Cleared {len(miner_ips)} miners")
 
     return jsonify({'status': 'success', 'message': f'Cleared {len(miner_ips)} miners'})
+
+
+# =============================================================================
+# METRICS ENDPOINTS - NEW FEATURE SET
+# =============================================================================
+
+
+@app.route('/api/metrics/sats-earned', methods=['GET'])
+def get_sats_earned():
+    """Get sats earned tracking (real-time, daily, weekly, all-time)"""
+    try:
+        hours = request.args.get('hours', type=int)
+        data = fleet.sats_tracker.get_sats_earned(hours=hours)
+        return jsonify(data)
+    except Exception as e:
+        logger.error(f"Error getting sats earned: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/metrics/fleet-health', methods=['GET'])
+def get_fleet_health():
+    """Get fleet health status with detailed issues and recommendations"""
+    try:
+        health = fleet.health_monitor.get_fleet_health()
+        return jsonify(health)
+    except Exception as e:
+        logger.error(f"Error getting fleet health: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+
+
+@app.route('/api/metrics/efficiency', methods=['GET'])
+def get_efficiency_matrix():
+    """Get power efficiency matrix (W/TH) for all miners"""
+    try:
+        rate = request.args.get('electricity_rate', default=0.12, type=float)
+        data = fleet.efficiency_matrix.get_efficiency_matrix(electricity_rate_per_kwh=rate)
+        return jsonify(data)
+    except Exception as e:
+        logger.error(f"Error getting efficiency matrix: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/metrics/pools', methods=['GET'])
+def get_pool_comparison():
+    """Compare mining pool performance"""
+    try:
+        data = fleet.pool_comparator.get_pool_comparison()
+        return jsonify(data)
+    except Exception as e:
+        logger.error(f"Error getting pool comparison: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/metrics/revenue-projection', methods=['GET'])
+def get_revenue_projection():
+    """Get revenue projections and break-even analysis"""
+    try:
+        target_sats = request.args.get('target_sats', type=int)
+        electricity_rate = request.args.get('electricity_rate', default=0.12, type=float)
+        data = fleet.revenue_model.get_revenue_projection(
+            target_sats=target_sats,
+            electricity_rate=electricity_rate
+        )
+        return jsonify(data)
+    except Exception as e:
+        logger.error(f"Error getting revenue projection: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
